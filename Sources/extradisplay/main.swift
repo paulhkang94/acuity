@@ -4,8 +4,10 @@ import Foundation
 // ~/Applications/ExtradisplayApp.app/Contents/MacOS/extradisplay),
 // default to `start` so the menubar launches automatically.
 // All explicit subcommand invocations (e.g., `extradisplay list`) are unaffected.
-var args = CommandLine.arguments
-if args.count == 1, Bundle.main.bundlePath.hasSuffix(".app") {
-    args.append("start")
+// ParsableCommand.main(_ arguments:) takes the parse arguments WITHOUT argv[0].
+// CommandLine.arguments[0] is the binary path — drop it before passing.
+var parseArgs = Array(CommandLine.arguments.dropFirst())
+if parseArgs.isEmpty, Bundle.main.bundlePath.hasSuffix(".app") {
+    parseArgs = ["start"]
 }
-ExtraDisplay.main(args)
+ExtraDisplay.main(parseArgs)
