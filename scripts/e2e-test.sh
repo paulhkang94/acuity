@@ -30,7 +30,12 @@ echo "▶ Pre-flight checks"
 if [[ "$SKIP_INSTALL" != "--no-install" ]]; then
     echo ""
     echo "▶ Running install (this takes ~10s for build)"
+    # Kill any running app instance first — open -a won't launch a second instance
+    pkill -f "ExtradisplayApp.app" 2>/dev/null || true
+    sleep 1
     extradisplay uninstall 2>/dev/null || true
+    # Truncate stale log so log checks only see fresh output
+    : > /tmp/extradisplay.log 2>/dev/null || true
     if bash scripts/install.sh 2>&1 | tee -a "$LOG"; then
         ok "install.sh completed"
     else

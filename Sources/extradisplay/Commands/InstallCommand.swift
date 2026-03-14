@@ -105,7 +105,16 @@ struct UninstallCommand: ParsableCommand {
     func run() throws {
         print("Uninstalling extradisplay LaunchAgent...\n")
 
-        // Step 1: Remove the LaunchAgent.
+        // Step 1: Quit the running menubar app (if any).
+        // open -a launched apps aren't managed by launchd directly, so removing
+        // the LaunchAgent plist doesn't terminate them. Quit explicitly so that
+        // a reinstall starts a fresh instance with the new binary.
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        task.arguments = ["-f", "ExtradisplayApp.app"]
+        try? task.run(); task.waitUntilExit()
+
+        // Step 2: Remove the LaunchAgent.
         if AgentManager.isInstalled {
             try AgentManager.uninstall()
             print("  ✓ LaunchAgent removed.")
