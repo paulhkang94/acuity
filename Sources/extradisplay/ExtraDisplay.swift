@@ -16,6 +16,7 @@ struct ExtraDisplay: ParsableCommand {
             ContrastCommand.self,
             InputCommand.self,
             DaemonCommand.self,
+            StartCommand.self,
             InstallCommand.self,
             UninstallCommand.self,
         ]
