@@ -20,6 +20,12 @@ swift build -c release
 echo "▶ Assembling app bundle..."
 bash scripts/build-app.sh
 
+echo "▶ Installing app bundle..."
+mkdir -p "$HOME/Applications"
+rm -rf "$HOME/Applications/ExtradisplayApp.app"
+cp -r build/ExtradisplayApp.app "$HOME/Applications/ExtradisplayApp.app"
+echo "  ✓ App: $HOME/Applications/ExtradisplayApp.app"
+
 echo "▶ Installing CLI binary..."
 if [[ -d /opt/homebrew/bin ]]; then
     INSTALL_DIR="/opt/homebrew/bin"
@@ -27,16 +33,11 @@ else
     mkdir -p "$HOME/.local/bin"
     INSTALL_DIR="$HOME/.local/bin"
 fi
-# rm first — can't overwrite root-owned file even if directory is user-writable
+# Copy from the bundle binary (post-codesign) so CLI and bundle stay in sync.
+# rm first — can't overwrite a root-owned file even if the directory is user-writable.
 rm -f "$INSTALL_DIR/extradisplay"
-cp .build/release/extradisplay "$INSTALL_DIR/extradisplay"
+cp "$HOME/Applications/ExtradisplayApp.app/Contents/MacOS/extradisplay" "$INSTALL_DIR/extradisplay"
 echo "  ✓ CLI: $INSTALL_DIR/extradisplay"
-
-echo "▶ Installing app bundle..."
-mkdir -p "$HOME/Applications"
-rm -rf "$HOME/Applications/ExtradisplayApp.app"
-cp -r build/ExtradisplayApp.app "$HOME/Applications/ExtradisplayApp.app"
-echo "  ✓ App: $HOME/Applications/ExtradisplayApp.app"
 
 echo "▶ Registering LaunchAgent..."
 # Uninstall first (idempotent) then install fresh

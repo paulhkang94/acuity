@@ -1,0 +1,10 @@
+# hooks/exempt.txt — Hooks intentionally NOT wired in base.json.
+#
+# Used by: scripts/cl-wire-audit.sh (Type A check)
+# FORMAT: filename.sh  # reason
+#
+# Add a hook here when it serves a purpose other than direct Claude Code hook invocation.
+# Every entry MUST have a reason comment explaining how it IS invoked.
+
+pre-commit.sh           # Git pre-commit hook — install via: cp hooks/pre-commit.sh .git/hooks/pre-commit
+claude-waiting-checker.sh  # Background subprocess — launched by hooks/waiting-ping.sh, not by Claude Code directly

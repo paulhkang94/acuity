@@ -96,6 +96,50 @@ public struct AgentManager {
     // MARK: - Private helpers
 
     private static func buildPlist(executablePath: URL, command: String = "daemon") -> String {
+        if command == "start" {
+            // Menubar mode: launch via `open -a App.app` through Launch Services.
+            //
+            // Running the binary DIRECTLY from launchd (even inside an .app bundle)
+            // does NOT provide WindowServer access — NSApplication exits EX_CONFIG (78).
+            // `open -a` goes through Launch Services, which grants proper GUI session
+            // context and allows NSApplication to connect to WindowServer.
+            //
+            // KeepAlive = false: `open` exits immediately after launching the app.
+            // The app manages its own lifecycle. launchd fires `open` once at login.
+            let appBundle = executablePath
+                .deletingLastPathComponent()  // MacOS/
+                .deletingLastPathComponent()  // Contents/
+                .deletingLastPathComponent()  // ExtradisplayApp.app
+            return """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+                "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+                <key>Label</key>
+                <string>\(agentLabel)</string>
+
+                <key>ProgramArguments</key>
+                <array>
+                    <string>/usr/bin/open</string>
+                    <string>-a</string>
+                    <string>\(appBundle.path)</string>
+                </array>
+
+                <key>KeepAlive</key>
+                <false/>
+
+                <key>RunAtLoad</key>
+                <true/>
+
+                <key>LimitLoadToSessionType</key>
+                <string>Aqua</string>
+            </dict>
+            </plist>
+            """
+        }
+
+        // Daemon mode: run binary directly (no GUI, no WindowServer).
         return """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"

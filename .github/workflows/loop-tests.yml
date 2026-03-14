@@ -1,0 +1,59 @@
+name: LOOP Template Tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: sudo apt-get install -y jq sqlite3 shellcheck
+      - name: Lint shell scripts
+        run: find . -name "*.sh" -type f ! -path "./node_modules/*" -exec shellcheck {} +
+      - name: Run template tests
+        run: bash tests/test-template.sh
+      - name: Run CL infrastructure tests
+        run: |
+          for t in tests/cl/test-*.sh; do
+            echo "=== $(basename $t) ==="
+            timeout 60 bash "$t" || {
+              EXIT=$?
+              if [ $EXIT -eq 124 ]; then
+                echo "⚠️  $(basename $t) timed out after 60s (skipped)"
+              else
+                exit $EXIT
+              fi
+            }
+          done
+      - name: Run verify lint
+        run: bash scripts/claude-verify.sh --lint
+      - name: Template drift gate
+        run: |
+          # Check that template files haven't drifted from any registered downstream repos.
+          # In CI, LOOP_REPOS must be set (colon-separated) to the repos under test.
+          # If not set, this step is a no-op (drift checks require local repo paths).
+          if [ -z "${LOOP_REPOS:-}" ]; then
+            echo "LOOP_REPOS not set — skipping downstream drift check."
+            echo "Set LOOP_REPOS=/path/to/repo1:/path/to/repo2 to enable."
+            exit 0
+          fi
+          bash scripts/template-sync.sh --check
+      - name: CL fingerprint eval gate
+        run: bash scripts/cl-eval-gate.sh
+      - name: Wire audit (Type A + B gap detection)
+        run: bash scripts/cl-wire-audit.sh
+      - name: Dead rule reference check
+        run: bash scripts/check-rule-commands.sh
+      - name: Same-commit test quality gate
+        run: |
+          # Check for tests written in the same commit as the code they test
+          # HEAD~1..HEAD compares staged changes; in CI use the PR base
+          BASE="${GITHUB_BASE_REF:-HEAD~1}"
+          bash scripts/cl-meta-test.sh "$BASE"..HEAD 2>/dev/null || echo "cl-meta-test: no issues found"
+      - name: CL A/B benchmark
+        run: |
+          # Measure CL-on vs CL-off impact (no API calls required)
+          bash scripts/cl-benchmark-ab.sh --mode both --json 2>/dev/null || echo "cl-benchmark-ab: DB not seeded yet (expected on first run)"

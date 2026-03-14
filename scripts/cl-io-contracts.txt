@@ -1,0 +1,68 @@
+# cl-io-contracts.txt — Producer/consumer contracts for shared LOOP file paths.
+#
+# FORMAT: SCRIPT  WRITES|READS  relative/path/to/file
+# CI check: cl-wire-audit.sh --type-b verifies every WRITES has a READS and vice versa.
+#
+# When adding a new shared file path:
+#   1. Add both WRITES and READS entries here
+#   2. Add the path constant to scripts/cl-paths.sh
+#   3. Source cl-paths.sh in both scripts (use the variable, not a hardcoded string)
+
+# ── Acceptance signal pipeline ────────────────────────────────────────────────
+hooks/outcome-verify.sh        WRITES  .claude/memory/acceptance-signals.jsonl
+scripts/cl-quality-audit.sh    READS   .claude/memory/acceptance-signals.jsonl
+
+# ── Rule coverage pipeline ────────────────────────────────────────────────────
+scripts/cl-check.sh            WRITES  .claude/memory/rule-coverage.jsonl
+scripts/cl-quality-audit.sh    READS   .claude/memory/rule-coverage.jsonl
+
+# ── Metrics pipeline ──────────────────────────────────────────────────────────
+hooks/session-start.sh             WRITES  .claude/memory/metrics.jsonl
+hooks/session-end.sh               WRITES  .claude/memory/metrics.jsonl
+scripts/claude-log-failure.sh      WRITES  .claude/memory/metrics.jsonl
+scripts/claude-log-subagent.sh     WRITES  .claude/memory/metrics.jsonl
+scripts/cl-session-summary.sh      WRITES  .claude/memory/metrics.jsonl
+scripts/cl-analytics.sh            READS   .claude/memory/metrics.jsonl
+scripts/cl-metrics-extended.sh     READS   .claude/memory/metrics.jsonl
+scripts/analyze-costs.sh           READS   .claude/memory/metrics.jsonl
+
+# ── Session tracking (ephemeral) ──────────────────────────────────────────────
+hooks/session-start.sh         WRITES  .claude/memory/.session_id
+hooks/session-end.sh           READS   .claude/memory/.session_id
+scripts/cl-session-summary.sh  READS   .claude/memory/.session_id
+scripts/claude-log-subagent.sh READS   .claude/memory/.session_id
+
+hooks/session-start.sh         WRITES  .claude/memory/.session_start_epoch
+hooks/session-end.sh           READS   .claude/memory/.session_start_epoch
+scripts/cl-session-summary.sh  READS   .claude/memory/.session_start_epoch
+
+# ── CL warning count (ephemeral) ─────────────────────────────────────────────
+scripts/cl-check.sh            WRITES  .claude/memory/.cl_warning_count
+hooks/outcome-verify.sh        READS   .claude/memory/.cl_warning_count
+hooks/session-start.sh         WRITES  .claude/memory/.cl_warning_count
+
+# ── Model routing pipeline ────────────────────────────────────────────────────
+scripts/cl-model-router.sh     WRITES  .config/loop/routing_decisions.jsonl
+scripts/cl-routing-metrics.sh  READS   .config/loop/routing_decisions.jsonl
+
+# ── Context recovery pipeline ─────────────────────────────────────────────────
+hooks/pre-compact.sh           WRITES  .claude/memory/compact-checkpoint.md
+hooks/session-start.sh         READS   .claude/memory/compact-checkpoint.md
+
+# ── Failure patterns pipeline ─────────────────────────────────────────────────
+scripts/claude-log-failure.sh              WRITES  .claude/memory/failure-patterns.md
+scripts/claude-post-session-analysis.sh    WRITES  .claude/memory/failure-patterns.md
+scripts/cl-check.sh                        READS   .claude/memory/failure-patterns.md
+hooks/subagent-start.sh                    READS   .claude/memory/failure-patterns.md
+
+# ── Cost tracking pipeline ────────────────────────────────────────────────────
+# session-end-cost.sh (ccusage) writes to GLOBAL session-costs.jsonl (~/.claude/memory/)
+# cl-session-summary.sh READS session-costs.jsonl first (real ccusage cost),
+# then falls back to tool-failure estimate. Emits session_cost with cost_source field.
+hooks/session-end-cost.sh          WRITES  ~/.claude/memory/session-costs.jsonl
+scripts/cl-session-summary.sh      READS   ~/.claude/memory/session-costs.jsonl
+
+# ── Agent results cache ────────────────────────────────────────────────────────
+scripts/claude-log-subagent.sh     WRITES  .claude/memory/agent-results.jsonl
+# Consumer: manual inspection / analyze-metrics skill (no automated consumer yet)
+scripts/cl-analytics.sh            READS   .claude/memory/agent-results.jsonl
