@@ -32,7 +32,9 @@ public struct AgentManager {
     ///
     /// - Parameter executablePath: Absolute path to the `extradisplay` binary.
     ///   Typically `/usr/local/bin/extradisplay`.
-    public static func install(executablePath: URL) throws {
+    /// - Parameter command: The subcommand the agent will run at login (default: "daemon").
+    ///   Pass "start" when the binary lives inside an .app bundle.
+    public static func install(executablePath: URL, command: String = "daemon") throws {
         let launchAgentsDir = plistPath.deletingLastPathComponent()
         try FileManager.default.createDirectory(
             at: launchAgentsDir,
@@ -40,7 +42,7 @@ public struct AgentManager {
             attributes: nil
         )
 
-        let plistContent = buildPlist(executablePath: executablePath)
+        let plistContent = buildPlist(executablePath: executablePath, command: command)
         try plistContent.write(to: plistPath, atomically: true, encoding: .utf8)
 
         // Use `launchctl bootstrap gui/<uid>` — the modern API that loads the
@@ -93,7 +95,7 @@ public struct AgentManager {
 
     // MARK: - Private helpers
 
-    private static func buildPlist(executablePath: URL) -> String {
+    private static func buildPlist(executablePath: URL, command: String = "daemon") -> String {
         return """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -106,7 +108,7 @@ public struct AgentManager {
             <key>ProgramArguments</key>
             <array>
                 <string>\(executablePath.path)</string>
-                <string>daemon</string>
+                <string>\(command)</string>
             </array>
 
             <key>KeepAlive</key>

@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
-# Install extradisplay binary system-wide.
-#
-# Usage — no sudo needed on Apple Silicon (/opt/homebrew/bin/ is user-owned):
-#   bash scripts/install.sh
-#
-# Never run with sudo: swift build as root makes .build/ root-owned (breaks
-# future builds), and a root-owned binary with AppKit linked is SIGKILLed
-# by macOS Sequoia when run by a non-root user.
+# One-shot install: build + assemble app bundle + install CLI + register LaunchAgent.
+# No sudo needed on Apple Silicon (/opt/homebrew/bin/ and ~/Applications/ are user-writable).
 
 set -euo pipefail
 
@@ -17,23 +11,34 @@ if [[ "$(id -u)" == "0" ]]; then
     exit 1
 fi
 
-echo "Building..."
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_ROOT"
+
+echo "▶ Building..."
 swift build -c release
 
+echo "▶ Assembling app bundle..."
+bash scripts/build-app.sh
+
+echo "▶ Installing CLI binary..."
 if [[ -d /opt/homebrew/bin ]]; then
     INSTALL_DIR="/opt/homebrew/bin"
 else
-    mkdir -p /usr/local/bin
-    INSTALL_DIR="/usr/local/bin"
+    mkdir -p "$HOME/.local/bin"
+    INSTALL_DIR="$HOME/.local/bin"
 fi
-
-# Remove first so cp creates a fresh user-owned file.
-# (Can't overwrite a root-owned file even if the directory is ours.)
+# rm first — can't overwrite root-owned file even if directory is user-writable
 rm -f "$INSTALL_DIR/extradisplay"
 cp .build/release/extradisplay "$INSTALL_DIR/extradisplay"
+echo "  ✓ CLI: $INSTALL_DIR/extradisplay"
 
-echo "✓ extradisplay installed to $INSTALL_DIR/extradisplay"
-echo ""
-echo "Next steps:"
-echo "  sudo extradisplay enable --all   # write HiDPI overrides (needs root)"
-echo "  extradisplay install              # register LaunchAgent (no sudo)"
+echo "▶ Installing app bundle..."
+mkdir -p "$HOME/Applications"
+rm -rf "$HOME/Applications/ExtradisplayApp.app"
+cp -r build/ExtradisplayApp.app "$HOME/Applications/ExtradisplayApp.app"
+echo "  ✓ App: $HOME/Applications/ExtradisplayApp.app"
+
+echo "▶ Registering LaunchAgent..."
+# Uninstall first (idempotent) then install fresh
+"$INSTALL_DIR/extradisplay" uninstall 2>/dev/null || true
+"$INSTALL_DIR/extradisplay" install

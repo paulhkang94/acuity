@@ -58,12 +58,26 @@ struct InstallCommand: ParsableCommand {
         }
 
         // Step 3: Install the LaunchAgent.
+        // Prefer the app bundle binary (enables NSApplication / menubar via launchd).
+        // Fall back to the CLI binary in daemon mode if the bundle isn't installed yet.
+        let bundleBinary = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Applications/ExtradisplayApp.app/Contents/MacOS/extradisplay")
+
+        let (launchPath, launchCommand): (URL, String) = {
+            if FileManager.default.fileExists(atPath: bundleBinary.path) {
+                return (bundleBinary, "start")
+            } else {
+                return (executableURL, "daemon")
+            }
+        }()
+
         if AgentManager.isInstalled {
             print("  ℹ LaunchAgent already installed at:\n    \(AgentManager.plistPath.path)")
         } else {
             do {
-                try AgentManager.install(executablePath: executableURL)
-                print("  ✓ LaunchAgent installed: \(AgentManager.plistPath.path)")
+                try AgentManager.install(executablePath: launchPath, command: launchCommand)
+                let modeStr = launchCommand == "start" ? "menubar (start)" : "headless (daemon)"
+                print("  ✓ LaunchAgent installed [\(modeStr)]: \(AgentManager.plistPath.path)")
             } catch {
                 throw error
             }
