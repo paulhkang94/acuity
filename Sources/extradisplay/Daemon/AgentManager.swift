@@ -106,7 +106,7 @@ public struct AgentManager {
             <key>ProgramArguments</key>
             <array>
                 <string>\(executablePath.path)</string>
-                <string>start</string>
+                <string>daemon</string>
             </array>
 
             <key>KeepAlive</key>
