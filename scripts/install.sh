@@ -1,28 +1,24 @@
 #!/usr/bin/env bash
 # Install extradisplay binary system-wide.
 #
-# Usage (correct — build as user, copy needs sudo):
-#   swift build -c release
-#   sudo bash scripts/install.sh
+# Usage — no sudo needed on Apple Silicon (/opt/homebrew/bin/ is user-owned):
+#   bash scripts/install.sh
 #
-# DO NOT run `sudo bash scripts/install.sh` without building first.
-# `swift build` must run as the current user — running it as root makes
-# .build/ root-owned, which blocks future user builds.
+# Never run with sudo: swift build as root makes .build/ root-owned (breaks
+# future builds), and a root-owned binary with AppKit linked is SIGKILLed
+# by macOS Sequoia when run by a non-root user.
 
 set -euo pipefail
 
-# Refuse to build as root. Build artifacts must be user-owned.
 if [[ "$(id -u)" == "0" ]]; then
-    # Already root (via sudo) — copy only, don't build.
-    COPY_ONLY=1
-else
-    COPY_ONLY=0
+    echo "error: do not run install.sh with sudo." >&2
+    echo "  /opt/homebrew/bin/ is user-writable on Apple Silicon." >&2
+    echo "  Run: bash scripts/install.sh" >&2
+    exit 1
 fi
 
-if [[ "$COPY_ONLY" == "0" ]]; then
-    echo "Building..."
-    swift build -c release
-fi
+echo "Building..."
+swift build -c release
 
 if [[ -d /opt/homebrew/bin ]]; then
     INSTALL_DIR="/opt/homebrew/bin"
@@ -31,14 +27,10 @@ else
     INSTALL_DIR="/usr/local/bin"
 fi
 
+# Remove first so cp creates a fresh user-owned file.
+# (Can't overwrite a root-owned file even if the directory is ours.)
+rm -f "$INSTALL_DIR/extradisplay"
 cp .build/release/extradisplay "$INSTALL_DIR/extradisplay"
-
-# Ensure the binary is user-owned. macOS Sequoia SIGKILLs non-root execution
-# of root-owned binaries that link AppKit (WindowServer access check).
-# /opt/homebrew/bin/ is user-writable on Apple Silicon — sudo is never needed.
-if [[ "$(stat -f '%Su' "$INSTALL_DIR/extradisplay")" == "root" ]]; then
-    chown "$(id -un):$(id -gn)" "$INSTALL_DIR/extradisplay" 2>/dev/null || true
-fi
 
 echo "✓ extradisplay installed to $INSTALL_DIR/extradisplay"
 echo ""
