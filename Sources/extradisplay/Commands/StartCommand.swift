@@ -8,16 +8,21 @@ struct StartCommand: ParsableCommand {
         abstract: "Start the menubar app (runs in background, re-applies HiDPI on reconnect)."
     )
 
-    func run() throws {
-        // Do NOT call setsid() here. When launched via launchd (LaunchAgent),
-        // setsid() creates a new session that strips the Mach bootstrap port
-        // launchd injected — NSApplication then cannot connect to WindowServer
-        // and exits EX_CONFIG (78). When run from Terminal, launchd is not the
-        // parent so the bootstrap port is inherited differently and setsid()
-        // appears harmless, masking the bug. launchd manages the lifecycle for
-        // LaunchAgent runs; Terminal users can run `extradisplay start &` and
-        // use disown if they want to detach from the shell.
+    // Append a line to /tmp/extradisplay.log so e2e tests and humans can verify startup.
+    // `open -a` launched apps don't inherit launchd's stdout redirect, so we write explicitly.
+    private static func log(_ message: String) {
+        let line = "[extradisplay] \(message)\n"
+        let path = "/tmp/extradisplay.log"
+        if let handle = FileHandle(forWritingAtPath: path) {
+            handle.seekToEndOfFile()
+            handle.write(line.data(using: .utf8)!)
+            handle.closeFile()
+        } else {
+            FileManager.default.createFile(atPath: path, contents: line.data(using: .utf8))
+        }
+    }
 
+    func run() throws {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
 
@@ -31,7 +36,8 @@ struct StartCommand: ParsableCommand {
 
         DispatchQueue.main.async {
             controller.setup()
-            keyInterceptor.start()
+            let started = keyInterceptor.start()
+            StartCommand.log("menubar started — BrightnessKeyInterceptor: \(started ? "listening for brightness keys" : "skipped (no Input Monitoring permission)")")
         }
 
         app.run()

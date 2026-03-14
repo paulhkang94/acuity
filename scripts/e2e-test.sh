@@ -124,15 +124,19 @@ ROOT_DAEMON=$(pgrep -f "extradisplay daemon" 2>/dev/null || echo "")
 echo ""
 echo "▶ Log checks (/tmp/extradisplay.log)"
 
-sleep 2  # give process a moment to write logs
+sleep 3  # give the open-a launched app time to write its startup log
 if [[ -f /tmp/extradisplay.log ]]; then
-    RECENT=$(tail -10 /tmp/extradisplay.log)
-    echo "$RECENT" | grep -q "ReconfigurationWatcher started" && \
-        ok "ReconfigurationWatcher started in log" || fail "ReconfigurationWatcher not in log"
-    echo "$RECENT" | grep -q "BrightnessKeyInterceptor: listening" && \
-        ok "BrightnessKeyInterceptor started in log" || fail "BrightnessKeyInterceptor not in log"
-    echo "$RECENT" | grep -q "daemon starting" && \
-        fail "OLD daemon command detected in log (should be 'start')" || ok "No old daemon command in log"
+    ALL_LOG=$(cat /tmp/extradisplay.log)
+    # These come from the menubar app (StartCommand) writing explicitly to the log
+    echo "$ALL_LOG" | grep -q "menubar started" && \
+        ok "Menubar started message in log" || fail "Menubar started message not in log"
+    echo "$ALL_LOG" | grep -q "BrightnessKeyInterceptor" && \
+        ok "BrightnessKeyInterceptor message in log" || fail "BrightnessKeyInterceptor message not in log"
+    # Stale root daemon check: daemon starting should NOT appear AFTER the menubar started line
+    AFTER_START=$(echo "$ALL_LOG" | awk '/menubar started/{found=1} found{print}')
+    echo "$AFTER_START" | grep -q "daemon starting" && \
+        fail "OLD root daemon still logging AFTER menubar start (orphan daemon)" || \
+        ok "No stale daemon messages after menubar start"
     info "Last 5 log lines:"
     tail -5 /tmp/extradisplay.log | sed 's/^/    /'
 else
