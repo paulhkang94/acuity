@@ -1,134 +1,195 @@
 import XCTest
 @testable import extradisplay
 
+/// Tests for PlistWriter.
+///
+/// Critical Tier 2 requirement: tests must call PlistWriter.write() directly
+/// (the real method), not a private helper — so we catch bugs in the actual
+/// code path that runs when the user runs `extradisplay enable`.
 final class PlistWriterTests: XCTestCase {
 
-    // MARK: - Override path construction
+    // MARK: - Path construction
 
-    func testOverridePath_constructsCorrectURL() {
-        // VendorID 0x10ac = 4268 (Dell), ProductID 0x41da = 16858
-        let vendorID:  UInt32 = 0x10ac
-        let productID: UInt32 = 0x41da
-
-        let url = PlistWriter.overridePath(vendorID: vendorID, productID: productID)
-
-        XCTAssertTrue(
-            url.path.hasSuffix("DisplayVendorID-10ac/DisplayProductID-41da"),
-            "Override path must end with 'DisplayVendorID-10ac/DisplayProductID-41da', got: \(url.path)"
-        )
+    func test_overridePath_formatsHexCorrectly_forDellS2721DGF() {
+        // Dell VendorID 0x10ac = 4268, ProductID 0x41da = 16858
+        let url = PlistWriter.overridePath(vendorID: 0x10ac, productID: 0x41da)
+        XCTAssertTrue(url.path.hasSuffix("DisplayVendorID-10ac/DisplayProductID-41da"),
+            "Path must end with DisplayVendorID-10ac/DisplayProductID-41da, got: \(url.path)")
     }
 
-    func testOverridePath_lowercaseHex() {
-        let vendorID:  UInt32 = 0xABCD
-        let productID: UInt32 = 0xEF01
-
-        let url = PlistWriter.overridePath(vendorID: vendorID, productID: productID)
-
-        XCTAssertTrue(
-            url.path.contains("DisplayVendorID-abcd"),
-            "Vendor directory must use lowercase hex"
-        )
-        XCTAssertTrue(
-            url.path.hasSuffix("DisplayProductID-ef01"),
-            "Product file must use lowercase hex"
-        )
+    func test_overridePath_usesLowercaseHex() {
+        let url = PlistWriter.overridePath(vendorID: 0xABCD, productID: 0xEF01)
+        XCTAssertTrue(url.path.contains("DisplayVendorID-abcd"),
+            "Vendor directory must use lowercase hex")
+        XCTAssertTrue(url.path.hasSuffix("DisplayProductID-ef01"),
+            "Product filename must use lowercase hex")
     }
 
-    // MARK: - Plist XML validity and write
+    // MARK: - PlistWriter.write() Tier 2: calls the real method, reads back from disk
 
-    func testWrittenPlist_isValidXMLAndParseable() throws {
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("extradisplay-tests-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+    func test_write_createsFileOnDisk() throws {
+        let tempBase = makeTempBase()
+        defer { cleanup(tempBase) }
 
-        let entries = [HiDPIEntry(logicalWidth: 1280, logicalHeight: 720)]
-        let plistData = try buildPlistData(vendorID: 0x10ac, productID: 0x41da, entries: entries)
+        try PlistWriter.write(
+            vendorID: 0x10ac,
+            productID: 0x41da,
+            productName: "Test Dell",
+            entries: [HiDPIEntry(logicalWidth: 1280, logicalHeight: 720)],
+            baseURL: tempBase
+        )
 
-        // Must deserialize without throwing.
+        let plistURL = tempBase
+            .appendingPathComponent("DisplayVendorID-10ac")
+            .appendingPathComponent("DisplayProductID-41da")
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: plistURL.path),
+            "PlistWriter.write() must create the plist file on disk")
+    }
+
+    func test_write_producesValidXMLPlist() throws {
+        let tempBase = makeTempBase()
+        defer { cleanup(tempBase) }
+
+        try PlistWriter.write(
+            vendorID: 0x10ac, productID: 0x41da, productName: "Test Dell",
+            entries: [HiDPIEntry(logicalWidth: 1280, logicalHeight: 720)],
+            baseURL: tempBase
+        )
+
+        let data = try readWrittenPlist(base: tempBase)
         var format = PropertyListSerialization.PropertyListFormat.xml
-        let parsed = try PropertyListSerialization.propertyList(
-            from: plistData,
-            options: [],
-            format: &format
+        XCTAssertNoThrow(
+            try PropertyListSerialization.propertyList(from: data, options: [], format: &format),
+            "Written plist must be valid XML deserializable by PropertyListSerialization"
         )
-
-        XCTAssertEqual(format, .xml, "Plist must be in XML format")
-        let dict = try XCTUnwrap(parsed as? [String: Any], "Plist root must be a dictionary")
-
-        XCTAssertNotNil(dict["DisplayProductID"],   "Plist must contain DisplayProductID")
-        XCTAssertNotNil(dict["DisplayVendorID"],    "Plist must contain DisplayVendorID")
-        XCTAssertNotNil(dict["scale-resolutions"],  "Plist must contain scale-resolutions")
+        XCTAssertEqual(format, .xml, "Output must be XML plist format")
     }
 
-    // MARK: - scale-resolutions entry count
+    func test_write_scaleResolutions_containsAppleCanonical12ByteEntries() throws {
+        let tempBase = makeTempBase()
+        defer { cleanup(tempBase) }
 
-    func testScaleResolutions_containsExpectedNumberOfEntries() throws {
-        // 8 logical resolutions × 3 variants each = 24 entries.
-        // Use the QHD preset which has 8 resolutions.
-        let entries = DisplayPresets.forNativeResolution(width: 2560, height: 1440, preset: .all)
-        XCTAssertEqual(entries.count, 8, "QHD preset must produce 8 logical resolution entries")
+        let entries = [
+            HiDPIEntry(logicalWidth: 1280, logicalHeight: 720),
+            HiDPIEntry(logicalWidth: 1920, logicalHeight: 1080),
+        ]
+        try PlistWriter.write(
+            vendorID: 0x10ac, productID: 0x41da, productName: "Test Dell",
+            entries: entries, baseURL: tempBase
+        )
 
-        let plistData = try buildPlistData(vendorID: 0x10ac, productID: 0x41da, entries: entries)
-
-        var format = PropertyListSerialization.PropertyListFormat.xml
-        let parsed = try PropertyListSerialization.propertyList(from: plistData, options: [], format: &format)
-        let dict    = try XCTUnwrap(parsed as? [String: Any])
+        let dict = try readPlistDict(base: tempBase)
         let scaleResolutions = try XCTUnwrap(
             dict["scale-resolutions"] as? [Data],
-            "scale-resolutions must be an array of Data"
+            "scale-resolutions must be an array of Data in the written plist"
         )
 
-        XCTAssertEqual(
-            scaleResolutions.count,
-            8 * 3,
-            "scale-resolutions must contain \(8 * 3) entries (8 resolutions × 3 variants)"
-        )
+        // With Apple canonical format (1 entry per resolution), expect entries.count entries
+        XCTAssertEqual(scaleResolutions.count, entries.count,
+            "scale-resolutions count must match number of HiDPIEntry objects")
+
+        // Every entry must be exactly 12 bytes
+        for (i, entry) in scaleResolutions.enumerated() {
+            XCTAssertEqual(entry.count, 12,
+                "scale-resolutions[\(i)] must be 12 bytes (Apple canonical format), got \(entry.count)")
+        }
     }
 
-    // MARK: - Write to temp directory
+    func test_write_scaleResolutions_firstEntry_matchesAppleCanonicalBytes() throws {
+        let tempBase = makeTempBase()
+        defer { cleanup(tempBase) }
 
-    func testWriteToTempDirectory_fileExistsAfterWrite() throws {
-        // Swap the base path to temp dir for this test by building the data directly
-        // and writing to a temp location — avoids needing root for /Library/Displays/.
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("extradisplay-plist-test-\(UUID().uuidString)", isDirectory: true)
-
-        let vendorDir = tempDir.appendingPathComponent("DisplayVendorID-10ac", isDirectory: true)
-        let plistURL  = vendorDir.appendingPathComponent("DisplayProductID-41da")
-
-        try FileManager.default.createDirectory(at: vendorDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-
-        let entries  = [HiDPIEntry(logicalWidth: 1280, logicalHeight: 720)]
-        let plistData = try buildPlistData(vendorID: 0x10ac, productID: 0x41da, entries: entries)
-        try plistData.write(to: plistURL, options: .atomic)
-
-        XCTAssertTrue(
-            FileManager.default.fileExists(atPath: plistURL.path),
-            "Plist file must exist after write"
+        try PlistWriter.write(
+            vendorID: 0x10ac, productID: 0x41da, productName: "Test Dell",
+            entries: [HiDPIEntry(logicalWidth: 1280, logicalHeight: 720)],
+            baseURL: tempBase
         )
 
-        let readBack = try Data(contentsOf: plistURL)
-        XCTAssertFalse(readBack.isEmpty, "Written plist file must not be empty")
+        let dict = try readPlistDict(base: tempBase)
+        let scaleResolutions = try XCTUnwrap(dict["scale-resolutions"] as? [Data])
+        let entry = scaleResolutions[0]
+
+        // Apple canonical: physW=2560, physH=1440, flag=0x00000001
+        let expectedBytes = Data([0x00,0x00,0x0A,0x00, 0x00,0x00,0x05,0xA0, 0x00,0x00,0x00,0x01])
+        XCTAssertEqual(entry, expectedBytes,
+            "First scale-resolutions entry must match Apple canonical bytes for 1280×720 HiDPI")
+    }
+
+    func test_write_plistContainsRequiredKeys() throws {
+        let tempBase = makeTempBase()
+        defer { cleanup(tempBase) }
+
+        try PlistWriter.write(
+            vendorID: 0x10ac, productID: 0x41da, productName: "Dell S2721DGF",
+            entries: [HiDPIEntry(logicalWidth: 1280, logicalHeight: 720)],
+            baseURL: tempBase
+        )
+
+        let dict = try readPlistDict(base: tempBase)
+        XCTAssertEqual(dict["DisplayVendorID"] as? Int, 4268,  "DisplayVendorID must be 4268 (0x10ac)")
+        XCTAssertEqual(dict["DisplayProductID"] as? Int, 16858, "DisplayProductID must be 16858 (0x41da)")
+        XCTAssertNotNil(dict["scale-resolutions"], "scale-resolutions key must be present")
+    }
+
+    func test_exists_returnsFalseBeforeWrite_trueAfterWrite() throws {
+        let tempBase = makeTempBase()
+        defer { cleanup(tempBase) }
+
+        XCTAssertFalse(PlistWriter.exists(vendorID: 0x10ac, productID: 0x41da, baseURL: tempBase),
+            "exists() must return false before write")
+
+        try PlistWriter.write(
+            vendorID: 0x10ac, productID: 0x41da, productName: "Test",
+            entries: [HiDPIEntry(logicalWidth: 1280, logicalHeight: 720)],
+            baseURL: tempBase
+        )
+
+        XCTAssertTrue(PlistWriter.exists(vendorID: 0x10ac, productID: 0x41da, baseURL: tempBase),
+            "exists() must return true after write")
+    }
+
+    func test_remove_deletesFile() throws {
+        let tempBase = makeTempBase()
+        defer { cleanup(tempBase) }
+
+        try PlistWriter.write(
+            vendorID: 0x10ac, productID: 0x41da, productName: "Test",
+            entries: [HiDPIEntry(logicalWidth: 1280, logicalHeight: 720)],
+            baseURL: tempBase
+        )
+        XCTAssertTrue(PlistWriter.exists(vendorID: 0x10ac, productID: 0x41da, baseURL: tempBase))
+
+        try PlistWriter.remove(vendorID: 0x10ac, productID: 0x41da, baseURL: tempBase)
+
+        XCTAssertFalse(PlistWriter.exists(vendorID: 0x10ac, productID: 0x41da, baseURL: tempBase),
+            "exists() must return false after remove()")
     }
 
     // MARK: - Helpers
 
-    /// Builds plist Data using the same logic as PlistWriter.write, but without touching the filesystem.
-    private func buildPlistData(
-        vendorID: UInt32,
-        productID: UInt32,
-        entries: [HiDPIEntry]
-    ) throws -> Data {
-        let scaleResolutions: [Data] = entries.flatMap { $0.allVariants() }
-        let plist: [String: Any] = [
-            "DisplayProductID":   Int(productID),
-            "DisplayVendorID":    Int(vendorID),
-            "DisplayProductName": "Test Display",
-            "scale-resolutions":  scaleResolutions,
-            "target-default-ppmm": 10.0699301 as Double,
-        ]
-        return try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+    private func makeTempBase() -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("extradisplay-tests-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    private func cleanup(_ url: URL) {
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    private func readWrittenPlist(base: URL) throws -> Data {
+        let url = base
+            .appendingPathComponent("DisplayVendorID-10ac")
+            .appendingPathComponent("DisplayProductID-41da")
+        return try Data(contentsOf: url)
+    }
+
+    private func readPlistDict(base: URL) throws -> [String: Any] {
+        let data = try readWrittenPlist(base: base)
+        var format = PropertyListSerialization.PropertyListFormat.xml
+        let parsed = try PropertyListSerialization.propertyList(from: data, options: [], format: &format)
+        return try XCTUnwrap(parsed as? [String: Any], "Plist root must be a dictionary")
     }
 }

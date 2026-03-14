@@ -1,90 +1,93 @@
 import XCTest
 @testable import extradisplay
 
+/// Tests for HiDPIEntry binary encoding.
+///
+/// Ground truth: Apple's own scale-resolutions entries from
+/// /System/Library/Displays/Contents/Resources/Overrides/DisplayVendorID-610/DisplayProductID-9ccd
+/// Every Apple entry is exactly 12 bytes:
+///   [4B physW big-endian] [4B physH big-endian] [0x00 0x00 0x00 0x01]
+/// where physW = logicalWidth × 2, physH = logicalHeight × 2.
 final class ResolutionEncoderTests: XCTestCase {
 
-    // MARK: - 1280×720 HiDPI encoding
+    // MARK: - Apple canonical format: 12 bytes, 1 entry
 
-    func testEncoding1280x720_physicalDimensionsInFirstVariant() {
+    func test_allVariants_returnsExactlyOneEntry() {
         let entry = HiDPIEntry(logicalWidth: 1280, logicalHeight: 720)
-        let variants = entry.allVariants()
-        XCTAssertFalse(variants.isEmpty, "allVariants() must not be empty")
-
-        let first = variants[0]
-        // physW = 1280 * 2 = 2560 = 0x00000A00
-        let physW = first.subdata(in: 0..<4)
-        XCTAssertEqual(physW, Data([0x00, 0x00, 0x0A, 0x00]), "physW for 1280 must be 0x00000A00")
-
-        // physH = 720 * 2 = 1440 = 0x000005A0
-        let physH = first.subdata(in: 4..<8)
-        XCTAssertEqual(physH, Data([0x00, 0x00, 0x05, 0xA0]), "physH for 720 must be 0x000005A0")
+        XCTAssertEqual(entry.allVariants().count, 1,
+            "allVariants() must return exactly 1 entry (Apple canonical format)")
     }
 
-    // MARK: - 1920×1080 HiDPI encoding
-
-    func testEncoding1920x1080_physicalDimensionsInFirstVariant() {
-        let entry = HiDPIEntry(logicalWidth: 1920, logicalHeight: 1080)
-        let variants = entry.allVariants()
-
-        let first = variants[0]
-        // physW = 1920 * 2 = 3840 = 0x00000F00
-        let physW = first.subdata(in: 0..<4)
-        XCTAssertEqual(physW, Data([0x00, 0x00, 0x0F, 0x00]), "physW for 1920 must be 0x00000F00")
-
-        // physH = 1080 * 2 = 2160 = 0x00000870
-        let physH = first.subdata(in: 4..<8)
-        XCTAssertEqual(physH, Data([0x00, 0x00, 0x08, 0x70]), "physH for 1080 must be 0x00000870")
-    }
-
-    // MARK: - Variant count
-
-    func testAllVariantsReturnsExactlyThreeEntries() {
-        let entry = HiDPIEntry(logicalWidth: 2560, logicalHeight: 1440)
-        XCTAssertEqual(entry.allVariants().count, 3, "allVariants() must return exactly 3 entries")
-    }
-
-    // MARK: - Suffix bytes per variant
-
-    func testVariant0_bareSuffix() {
+    func test_entry_is12Bytes() {
         let entry = HiDPIEntry(logicalWidth: 1280, logicalHeight: 720)
-        let v0 = entry.allVariants()[0]
-        // bare suffix: [0x00] — total size = 8 + 1 = 9 bytes
-        XCTAssertEqual(v0.count, 9, "Bare variant must be 9 bytes total")
-        XCTAssertEqual(v0[8], 0x00, "Bare variant suffix byte must be 0x00")
+        XCTAssertEqual(entry.allVariants()[0].count, 12,
+            "Each scale-resolutions entry must be exactly 12 bytes (Apple canonical)")
     }
 
-    func testVariant1_hiDPISuffix() {
-        let entry = HiDPIEntry(logicalWidth: 1280, logicalHeight: 720)
-        let v1 = entry.allVariants()[1]
-        // HiDPI suffix: [0x00, 0x00, 0x00, 0x01, 0x00, 0x20, 0x00, 0x00] — total = 16 bytes
-        XCTAssertEqual(v1.count, 16, "HiDPI variant must be 16 bytes total")
-        let expectedSuffix = Data([0x00, 0x00, 0x00, 0x01, 0x00, 0x20, 0x00, 0x00])
-        XCTAssertEqual(v1.subdata(in: 8..<16), expectedSuffix, "HiDPI variant suffix mismatch")
+    // MARK: - Physical dimension encoding (bytes 0–7)
+
+    func test_1280x720_physicalWidth_is2560() {
+        let data = HiDPIEntry(logicalWidth: 1280, logicalHeight: 720).allVariants()[0]
+        XCTAssertEqual(data.subdata(in: 0..<4), Data([0x00, 0x00, 0x0A, 0x00]),
+            "physW for logical 1280 must be 0x00000A00 (2560 big-endian)")
     }
 
-    func testVariant2_extendedSuffix() {
-        let entry = HiDPIEntry(logicalWidth: 1280, logicalHeight: 720)
-        let v2 = entry.allVariants()[2]
-        // Extended suffix: [0x00, 0x00, 0x00, 0x01, 0x0A, 0x0A, 0x00, 0x00] — total = 16 bytes
-        XCTAssertEqual(v2.count, 16, "Extended variant must be 16 bytes total")
-        let expectedSuffix = Data([0x00, 0x00, 0x00, 0x01, 0x0A, 0x0A, 0x00, 0x00])
-        XCTAssertEqual(v2.subdata(in: 8..<16), expectedSuffix, "Extended variant suffix mismatch")
+    func test_1280x720_physicalHeight_is1440() {
+        let data = HiDPIEntry(logicalWidth: 1280, logicalHeight: 720).allVariants()[0]
+        XCTAssertEqual(data.subdata(in: 4..<8), Data([0x00, 0x00, 0x05, 0xA0]),
+            "physH for logical 720 must be 0x000005A0 (1440 big-endian)")
     }
 
-    // MARK: - Base64 encoding
+    func test_1920x1080_physicalWidth_is3840() {
+        let data = HiDPIEntry(logicalWidth: 1920, logicalHeight: 1080).allVariants()[0]
+        XCTAssertEqual(data.subdata(in: 0..<4), Data([0x00, 0x00, 0x0F, 0x00]),
+            "physW for logical 1920 must be 0x00000F00 (3840 big-endian)")
+    }
 
-    func testBase64EncodingOfFirstVariant_1280x720() {
-        let entry = HiDPIEntry(logicalWidth: 1280, logicalHeight: 720)
-        let variants = entry.allVariants()
+    func test_1920x1080_physicalHeight_is2160() {
+        let data = HiDPIEntry(logicalWidth: 1920, logicalHeight: 1080).allVariants()[0]
+        XCTAssertEqual(data.subdata(in: 4..<8), Data([0x00, 0x00, 0x08, 0x70]),
+            "physH for logical 1080 must be 0x00000870 (2160 big-endian)")
+    }
 
-        // bare variant: [0x00, 0x00, 0x0A, 0x00, 0x00, 0x00, 0x05, 0xA0, 0x00]
-        let expectedData = Data([0x00, 0x00, 0x0A, 0x00, 0x00, 0x00, 0x05, 0xA0, 0x00])
-        let expectedBase64 = expectedData.base64EncodedString()
+    // MARK: - HiDPI flag (bytes 8–11)
 
-        XCTAssertEqual(
-            variants[0].base64EncodedString(),
-            expectedBase64,
-            "Base64 of first variant for 1280×720 must match expected encoding"
-        )
+    func test_flagBytes_are_0x00000001_forAllResolutions() {
+        for (w, h) in [(1280, 720), (1920, 1080), (2560, 1440), (1440, 810)] {
+            let data = HiDPIEntry(logicalWidth: w, logicalHeight: h).allVariants()[0]
+            XCTAssertEqual(data.subdata(in: 8..<12), Data([0x00, 0x00, 0x00, 0x01]),
+                "Flag bytes for \(w)×\(h) must be 0x00000001 (Apple HiDPI mode flag)")
+        }
+    }
+
+    // MARK: - Full byte sequence: cross-check against Apple canonical base64 strings
+    //
+    // These expected values are derived from the same arithmetic Apple uses in
+    // /System/Library/Displays/Contents/Resources/Overrides/DisplayVendorID-610/.
+    // If any of these fail, our encoding diverges from Apple's format and the
+    // plist will not produce HiDPI modes after reboot.
+
+    func test_1280x720_fullByteSequence_matchesAppleFormat() {
+        // physW=2560=0x00000A00, physH=1440=0x000005A0, flag=0x00000001
+        let expected = Data([0x00,0x00,0x0A,0x00, 0x00,0x00,0x05,0xA0, 0x00,0x00,0x00,0x01])
+        let actual   = HiDPIEntry(logicalWidth: 1280, logicalHeight: 720).allVariants()[0]
+        XCTAssertEqual(actual, expected)
+        XCTAssertEqual(actual.base64EncodedString(), "AAAKAAAABaAAAAAB")
+    }
+
+    func test_1920x1080_fullByteSequence_matchesAppleFormat() {
+        // physW=3840=0x00000F00, physH=2160=0x00000870, flag=0x00000001
+        let expected = Data([0x00,0x00,0x0F,0x00, 0x00,0x00,0x08,0x70, 0x00,0x00,0x00,0x01])
+        let actual   = HiDPIEntry(logicalWidth: 1920, logicalHeight: 1080).allVariants()[0]
+        XCTAssertEqual(actual, expected)
+        XCTAssertEqual(actual.base64EncodedString(), "AAAPAAAACHAAAAAB")
+    }
+
+    func test_2560x1440_fullByteSequence_matchesAppleFormat() {
+        // physW=5120=0x00001400, physH=2880=0x00000B40, flag=0x00000001
+        let expected = Data([0x00,0x00,0x14,0x00, 0x00,0x00,0x0B,0x40, 0x00,0x00,0x00,0x01])
+        let actual   = HiDPIEntry(logicalWidth: 2560, logicalHeight: 1440).allVariants()[0]
+        XCTAssertEqual(actual, expected)
+        XCTAssertEqual(actual.base64EncodedString(), "AAAUAAAAC0AAAAAB")
     }
 }

@@ -3,15 +3,16 @@ import Foundation
 /// Encodes a logical HiDPI resolution into the binary format expected by
 /// macOS `scale-resolutions` plist entries.
 ///
-/// Binary format per entry:
-///   [4 bytes: width*2 as big-endian UInt32]
-///   [4 bytes: height*2 as big-endian UInt32]
-///   [suffix bytes — variant-dependent]
+/// Binary format per entry — Apple canonical (verified against
+/// /System/Library/Displays/Contents/Resources/Overrides/DisplayVendorID-610/):
 ///
-/// Three suffix variants:
-///   bare:     [0x00]
-///   HiDPI:    [0x00, 0x00, 0x00, 0x01, 0x00, 0x20, 0x00, 0x00]
-///   extended: [0x00, 0x00, 0x00, 0x01, 0x0A, 0x0A, 0x00, 0x00]
+///   [4 bytes: width*2 as big-endian UInt32]   ← physical framebuffer width
+///   [4 bytes: height*2 as big-endian UInt32]  ← physical framebuffer height
+///   [4 bytes: 0x00000001]                     ← HiDPI mode flag
+///
+/// Total: 12 bytes per entry. WindowServer reads these at startup from
+/// /Library/Displays/Contents/Resources/Overrides/ to populate available
+/// scaled display modes.
 public struct HiDPIEntry {
     public let logicalWidth: Int
     public let logicalHeight: Int
@@ -23,24 +24,18 @@ public struct HiDPIEntry {
 
     // MARK: - Binary encoding
 
-    /// Returns the 3 binary variants for this logical resolution.
+    /// Returns one 12-byte entry in Apple's canonical scale-resolutions format.
+    /// Physical dimensions = logical × 2 (2× HiDPI supersampling).
     public func allVariants() -> [Data] {
         let physW = UInt32(logicalWidth * 2)
         let physH = UInt32(logicalHeight * 2)
 
-        var header = Data(capacity: 8)
-        header.append(bigEndianBytes(physW))
-        header.append(bigEndianBytes(physH))
+        var entry = Data(capacity: 12)
+        entry.append(bigEndianBytes(physW))
+        entry.append(bigEndianBytes(physH))
+        entry.append(bigEndianBytes(UInt32(1)))  // 0x00000001 — HiDPI flag
 
-        let suffixBare:     [UInt8] = [0x00]
-        let suffixHiDPI:    [UInt8] = [0x00, 0x00, 0x00, 0x01, 0x00, 0x20, 0x00, 0x00]
-        let suffixExtended: [UInt8] = [0x00, 0x00, 0x00, 0x01, 0x0A, 0x0A, 0x00, 0x00]
-
-        return [suffixBare, suffixHiDPI, suffixExtended].map { suffix in
-            var data = header
-            data.append(contentsOf: suffix)
-            return data
-        }
+        return [entry]
     }
 
     /// Returns Base64-encoded strings of each variant — useful for debugging.

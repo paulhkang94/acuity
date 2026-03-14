@@ -21,9 +21,14 @@ public struct PlistWriter {
     /// Follows the macOS convention:
     ///   `…/Overrides/DisplayVendorID-<hex>/DisplayProductID-<hex>`
     public static func overridePath(vendorID: UInt32, productID: UInt32) -> URL {
+        overridePath(vendorID: vendorID, productID: productID, baseURL: overridesBasePath)
+    }
+
+    /// Testable variant — accepts an arbitrary base URL (e.g. a temp directory).
+    public static func overridePath(vendorID: UInt32, productID: UInt32, baseURL: URL) -> URL {
         let vendorDir = "DisplayVendorID-\(String(vendorID, radix: 16, uppercase: false))"
         let productFile = "DisplayProductID-\(String(productID, radix: 16, uppercase: false))"
-        return overridesBasePath
+        return baseURL
             .appendingPathComponent(vendorDir, isDirectory: true)
             .appendingPathComponent(productFile)
     }
@@ -45,7 +50,19 @@ public struct PlistWriter {
         productName: String,
         entries: [HiDPIEntry]
     ) throws {
-        let url = overridePath(vendorID: vendorID, productID: productID)
+        try write(vendorID: vendorID, productID: productID, productName: productName,
+                  entries: entries, baseURL: overridesBasePath)
+    }
+
+    /// Testable variant — writes to an arbitrary base URL.
+    public static func write(
+        vendorID: UInt32,
+        productID: UInt32,
+        productName: String,
+        entries: [HiDPIEntry],
+        baseURL: URL
+    ) throws {
+        let url = overridePath(vendorID: vendorID, productID: productID, baseURL: baseURL)
 
         // Ensure the vendor directory exists.
         try FileManager.default.createDirectory(
@@ -80,7 +97,11 @@ public struct PlistWriter {
     ///
     /// - Throws: File I/O errors other than "file not found".
     public static func remove(vendorID: UInt32, productID: UInt32) throws {
-        let url = overridePath(vendorID: vendorID, productID: productID)
+        try remove(vendorID: vendorID, productID: productID, baseURL: overridesBasePath)
+    }
+
+    public static func remove(vendorID: UInt32, productID: UInt32, baseURL: URL) throws {
+        let url = overridePath(vendorID: vendorID, productID: productID, baseURL: baseURL)
         let fm = FileManager.default
 
         guard fm.fileExists(atPath: url.path) else { return }
@@ -98,7 +119,11 @@ public struct PlistWriter {
 
     /// Returns `true` if an override file already exists for the given IDs.
     public static func exists(vendorID: UInt32, productID: UInt32) -> Bool {
-        let url = overridePath(vendorID: vendorID, productID: productID)
+        exists(vendorID: vendorID, productID: productID, baseURL: overridesBasePath)
+    }
+
+    public static func exists(vendorID: UInt32, productID: UInt32, baseURL: URL) -> Bool {
+        let url = overridePath(vendorID: vendorID, productID: productID, baseURL: baseURL)
         return FileManager.default.fileExists(atPath: url.path)
     }
 }
