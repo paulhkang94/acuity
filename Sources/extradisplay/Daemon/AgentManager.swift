@@ -162,10 +162,10 @@ public struct AgentManager {
             <true/>
 
             <key>StandardOutPath</key>
-            <string>/tmp/extradisplay.log</string>
+            <string>\(NSHomeDirectory())/Library/Logs/extradisplay.log</string>
 
             <key>StandardErrorPath</key>
-            <string>/tmp/extradisplay.log</string>
+            <string>\(NSHomeDirectory())/Library/Logs/extradisplay.log</string>
         </dict>
         </plist>
         """

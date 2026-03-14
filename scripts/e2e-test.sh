@@ -35,7 +35,7 @@ if [[ "$SKIP_INSTALL" != "--no-install" ]]; then
     sleep 1
     extradisplay uninstall 2>/dev/null || true
     # Truncate stale log so log checks only see fresh output
-    : > /tmp/extradisplay.log 2>/dev/null || true
+    : > $HOME/Library/Logs/extradisplay.log 2>/dev/null || true
     if bash scripts/install.sh 2>&1 | tee -a "$LOG"; then
         ok "install.sh completed"
     else
@@ -127,11 +127,11 @@ ROOT_DAEMON=$(pgrep -f "extradisplay daemon" 2>/dev/null || echo "")
 # ── 5. Log checks ────────────────────────────────────────────────────────────
 
 echo ""
-echo "▶ Log checks (/tmp/extradisplay.log)"
+echo "▶ Log checks ($HOME/Library/Logs/extradisplay.log)"
 
 sleep 3  # give the open-a launched app time to write its startup log
-if [[ -f /tmp/extradisplay.log ]]; then
-    ALL_LOG=$(cat /tmp/extradisplay.log)
+if [[ -f $HOME/Library/Logs/extradisplay.log ]]; then
+    ALL_LOG=$(cat $HOME/Library/Logs/extradisplay.log)
     # These come from the menubar app (StartCommand) writing explicitly to the log
     echo "$ALL_LOG" | grep -q "menubar started" && \
         ok "Menubar started message in log" || fail "Menubar started message not in log"
@@ -143,9 +143,9 @@ if [[ -f /tmp/extradisplay.log ]]; then
         fail "OLD root daemon still logging AFTER menubar start (orphan daemon)" || \
         ok "No stale daemon messages after menubar start"
     info "Last 5 log lines:"
-    tail -5 /tmp/extradisplay.log | sed 's/^/    /'
+    tail -5 $HOME/Library/Logs/extradisplay.log | sed 's/^/    /'
 else
-    fail "/tmp/extradisplay.log not found"
+    fail "$HOME/Library/Logs/extradisplay.log not found"
 fi
 
 # ── 6. Screenshot verification ───────────────────────────────────────────────
