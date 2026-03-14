@@ -11,7 +11,16 @@ public struct AgentManager {
     public static let agentLabel = "com.extradisplay.agent"
 
     public static var plistPath: URL {
-        let home = FileManager.default.homeDirectoryForCurrentUser
+        // When run via sudo, homeDirectoryForCurrentUser returns root's home.
+        // Prefer SUDO_USER → /Users/<user> so the LaunchAgent lands in the
+        // invoking user's Library, not /var/root/Library.
+        let home: URL
+        if let sudoUser = ProcessInfo.processInfo.environment["SUDO_USER"],
+           !sudoUser.isEmpty {
+            home = URL(fileURLWithPath: "/Users/\(sudoUser)", isDirectory: true)
+        } else {
+            home = FileManager.default.homeDirectoryForCurrentUser
+        }
         return home
             .appendingPathComponent("Library/LaunchAgents", isDirectory: true)
             .appendingPathComponent("\(agentLabel).plist")
@@ -34,9 +43,14 @@ public struct AgentManager {
         let plistContent = buildPlist(executablePath: executablePath)
         try plistContent.write(to: plistPath, atomically: true, encoding: .utf8)
 
-        // Load the agent without requiring a reboot.
-        try runLaunchctl(["load", plistPath.path])
-        fputs("[extradisplay] LaunchAgent installed and loaded: \(plistPath.path)\n", stderr)
+        // Use `launchctl bootstrap gui/<uid>` — the modern API that loads the
+        // agent into the USER's GUI session. `launchctl load` (deprecated) runs
+        // the agent as root, which causes macOS to SIGKILL any WindowServer
+        // connection (menubar). SUDO_UID gives the invoking user's real UID when
+        // this is called via sudo.
+        let uid = realUserUID()
+        try runLaunchctl(["bootstrap", "gui/\(uid)", plistPath.path])
+        fputs("[extradisplay] LaunchAgent bootstrapped into gui/\(uid): \(plistPath.path)\n", stderr)
     }
 
     // MARK: - Uninstall
@@ -44,8 +58,8 @@ public struct AgentManager {
     /// Unloads and removes the LaunchAgent plist.
     public static func uninstall() throws {
         if isInstalled {
-            // Unload first; ignore errors if it was never loaded.
-            _ = try? runLaunchctl(["unload", plistPath.path])
+            let uid = realUserUID()
+            _ = try? runLaunchctl(["bootout", "gui/\(uid)", plistPath.path])
             try FileManager.default.removeItem(at: plistPath)
             fputs("[extradisplay] LaunchAgent removed: \(plistPath.path)\n", stderr)
         } else {
@@ -92,7 +106,7 @@ public struct AgentManager {
             <key>ProgramArguments</key>
             <array>
                 <string>\(executablePath.path)</string>
-                <string>daemon</string>
+                <string>start</string>
             </array>
 
             <key>KeepAlive</key>
@@ -109,6 +123,15 @@ public struct AgentManager {
         </dict>
         </plist>
         """
+    }
+
+    /// Returns the real (non-root) UID of the invoking user.
+    /// When run via sudo, SUDO_UID carries the original user's UID.
+    private static func realUserUID() -> UInt32 {
+        if let s = ProcessInfo.processInfo.environment["SUDO_UID"], let uid = UInt32(s) {
+            return uid
+        }
+        return getuid()
     }
 
     /// Runs a `launchctl` command and throws if it exits non-zero.
