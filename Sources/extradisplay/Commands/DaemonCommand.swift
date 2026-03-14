@@ -10,7 +10,7 @@ struct DaemonCommand: ParsableCommand {
     )
 
     func run() throws {
-        let version = ExtraDisplay.configuration.version ?? "unknown"
+        let version = ExtraDisplay.configuration.version
         fputs("[extradisplay] daemon starting — version \(version)\n", stderr)
 
         let watcher = ReconfigurationWatcher()

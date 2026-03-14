@@ -45,7 +45,7 @@ public struct AgentManager {
     public static func uninstall() throws {
         if isInstalled {
             // Unload first; ignore errors if it was never loaded.
-            try? runLaunchctl(["unload", plistPath.path])
+            _ = try? runLaunchctl(["unload", plistPath.path])
             try FileManager.default.removeItem(at: plistPath)
             fputs("[extradisplay] LaunchAgent removed: \(plistPath.path)\n", stderr)
         } else {
