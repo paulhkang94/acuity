@@ -9,9 +9,14 @@ struct StartCommand: ParsableCommand {
     )
 
     func run() throws {
-        // Detach from terminal so the process doesn't hold the shell.
-        // Must be called before NSApplication.shared to avoid side effects.
-        setsid()
+        // Do NOT call setsid() here. When launched via launchd (LaunchAgent),
+        // setsid() creates a new session that strips the Mach bootstrap port
+        // launchd injected — NSApplication then cannot connect to WindowServer
+        // and exits EX_CONFIG (78). When run from Terminal, launchd is not the
+        // parent so the bootstrap port is inherited differently and setsid()
+        // appears harmless, masking the bug. launchd manages the lifecycle for
+        // LaunchAgent runs; Terminal users can run `extradisplay start &` and
+        // use disown if they want to detach from the shell.
 
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
