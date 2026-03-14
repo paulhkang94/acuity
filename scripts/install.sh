@@ -33,6 +33,13 @@ fi
 
 cp .build/release/extradisplay "$INSTALL_DIR/extradisplay"
 
+# Ensure the binary is user-owned. macOS Sequoia SIGKILLs non-root execution
+# of root-owned binaries that link AppKit (WindowServer access check).
+# /opt/homebrew/bin/ is user-writable on Apple Silicon — sudo is never needed.
+if [[ "$(stat -f '%Su' "$INSTALL_DIR/extradisplay")" == "root" ]]; then
+    chown "$(id -un):$(id -gn)" "$INSTALL_DIR/extradisplay" 2>/dev/null || true
+fi
+
 echo "✓ extradisplay installed to $INSTALL_DIR/extradisplay"
 echo ""
 echo "Next steps:"
