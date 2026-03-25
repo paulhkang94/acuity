@@ -74,8 +74,8 @@ jobs:
             echo "::error::build/Acuity.app not found"
             exit 1
           fi
-          if [[ ! -f "build/Acuity.app/Contents/MacOS/extradisplay" ]]; then
-            echo "::error::binary missing: build/Acuity.app/Contents/MacOS/extradisplay"
+          if [[ ! -f "build/Acuity.app/Contents/MacOS/acuity" ]]; then
+            echo "::error::binary missing: build/Acuity.app/Contents/MacOS/acuity"
             exit 1
           fi
           if [[ ! -f "build/Acuity.app/Contents/Info.plist" ]]; then
@@ -83,4 +83,4 @@ jobs:
             exit 1
           fi
           echo "✓ Acuity.app bundle structure verified"
-          echo "  Binary: $(file build/Acuity.app/Contents/MacOS/extradisplay | cut -d: -f2)"
+          echo "  Binary: $(file build/Acuity.app/Contents/MacOS/acuity | cut -d: -f2)"
