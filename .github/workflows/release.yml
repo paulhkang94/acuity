@@ -95,12 +95,15 @@ jobs:
           APP_PATH: ${{ github.workspace }}/build/Acuity.app
 
       - name: Notarize Acuity.app
-        # notarytool --wait can take 30–90 minutes — the 120m job timeout covers this.
-        # Credentials were stored in keychain by the "Store notarization credentials" step.
+        # notarytool requires a .zip/.pkg/.dmg — cannot submit a raw .app directory.
+        # Zip with ditto (preserves xattrs), submit the zip, then staple the .app.
+        # --wait can take 30–90 minutes — the 120m job timeout covers this.
         run: |
-          xcrun notarytool submit build/Acuity.app \
+          ditto -c -k --keepParent build/Acuity.app /tmp/Acuity-notarize.zip
+          xcrun notarytool submit /tmp/Acuity-notarize.zip \
             --keychain-profile "notarytool-profile" \
             --wait
+          rm /tmp/Acuity-notarize.zip
           echo "✓ Notarization complete"
 
       - name: Staple notarization ticket
