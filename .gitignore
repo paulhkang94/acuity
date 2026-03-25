@@ -8,6 +8,14 @@ DerivedData/
 *.swp
 *.log
 .claude/
+CLAUDE.md
+
+# Private LOOP/CL infrastructure — never in public OSS repo
+hooks/
+scripts/cl-*.sh
+scripts/cl-*.txt
+scripts/claude-*.sh
+.github/workflows/loop-tests.yml
 __pycache__/
 *.pyc
 .pytest_cache/

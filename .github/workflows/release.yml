@@ -1,0 +1,216 @@
+name: Release
+
+# Triggers when a vX.Y.Z tag is pushed — builds, signs, notarizes, and
+# publishes a GitHub Release with the Acuity.zip artifact.
+#
+# Required secrets (set in repo Settings → Secrets):
+#   DEVELOPER_ID_CERT_BASE64    — base64-encoded Developer ID Application .p12
+#   DEVELOPER_ID_CERT_PASSWORD  — password for the .p12
+#   NOTARIZE_KEY_ID             — App Store Connect API key ID
+#   NOTARIZE_ISSUER_ID          — App Store Connect issuer ID
+#   NOTARIZE_API_KEY            — base64-encoded .p8 key file content
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  release:
+    runs-on: macos-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write   # required to create GitHub Releases and upload assets
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Cache SPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/.cache/org.swift.swiftpm
+          key: spm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Clear stale SPM binary artifact cache
+        run: rm -rf ~/Library/Caches/org.swift.swiftpm/artifacts/
+
+      - name: Import signing certificate
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_CERT_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: acuity-ci
+        run: |
+          # Create a temporary keychain for the CI signing cert
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          echo "$CERTIFICATE_BASE64" | base64 --decode > /tmp/cert.p12
+          security import /tmp/cert.p12 -k build.keychain -P "$CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          rm /tmp/cert.p12
+
+      - name: Store notarization credentials
+        env:
+          NOTARIZE_KEY_ID: ${{ secrets.NOTARIZE_KEY_ID }}
+          NOTARIZE_ISSUER_ID: ${{ secrets.NOTARIZE_ISSUER_ID }}
+          NOTARIZE_API_KEY: ${{ secrets.NOTARIZE_API_KEY }}
+        run: |
+          mkdir -p ~/.private_keys
+          echo "$NOTARIZE_API_KEY" | base64 --decode > ~/.private_keys/AuthKey_${NOTARIZE_KEY_ID}.p8
+          # Store in keychain so xcrun notarytool can find them
+          xcrun notarytool store-credentials "notarytool-profile" \
+            --key ~/.private_keys/AuthKey_${NOTARIZE_KEY_ID}.p8 \
+            --key-id "$NOTARIZE_KEY_ID" \
+            --issuer "$NOTARIZE_ISSUER_ID"
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Run tests
+        run: swift test
+
+      - name: Build release binary
+        run: swift build -c release
+
+      - name: Assemble Acuity.app
+        run: bash scripts/build-app.sh
+
+      - name: Sign Acuity.app (Developer ID)
+        run: bash scripts/sign-app.sh
+        env:
+          APP_PATH: ${{ github.workspace }}/build/Acuity.app
+
+      - name: Notarize Acuity.app
+        # notarytool --wait can take 30–90 minutes — the 120m job timeout covers this.
+        # Credentials were stored in keychain by the "Store notarization credentials" step.
+        run: |
+          xcrun notarytool submit build/Acuity.app \
+            --keychain-profile "notarytool-profile" \
+            --wait
+          echo "✓ Notarization complete"
+
+      - name: Staple notarization ticket
+        run: |
+          xcrun stapler staple build/Acuity.app
+          echo "✓ Staple complete"
+
+      - name: Create release artifact
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+
+          # Use ditto (not zip) — ditto preserves the notarization staple ticket
+          # stored in extended attributes. Plain `zip` strips it.
+          # ditto also creates a relative path inside the zip (Acuity.app/),
+          # not the full runner path.
+          ditto -c -k --keepParent \
+            "${{ github.workspace }}/build/Acuity.app" \
+            "/tmp/Acuity-${VERSION}.zip"
+          echo "ARTIFACT=/tmp/Acuity-${VERSION}.zip" >> $GITHUB_ENV
+
+          # Sanity check: first entry in zip must be Acuity.app/, not a runner path
+          first_entry=$(unzip -l "/tmp/Acuity-${VERSION}.zip" | awk 'NR==4{print $4}')
+          if [[ "$first_entry" != "Acuity.app/" ]]; then
+            echo "ERROR: zip internal path is '$first_entry' (expected 'Acuity.app/')"
+            echo "The zip will produce a nested folder structure, not a drag-and-drop app."
+            exit 1
+          fi
+          echo "✓ Zip structure verified: first entry = $first_entry"
+
+      - name: Gatekeeper pre-publish check (extract zip → quarantine → spctl)
+        # Test the artifact BEFORE it goes public. If this fails, nothing ships.
+        # Tests: zip path structure, notarization staple ticket, spctl --assess.
+        run: |
+          _gk_tmp="$(mktemp -d)"
+          unzip -qq "$ARTIFACT" -d "$_gk_tmp"
+          _extracted="${_gk_tmp}/Acuity.app"
+
+          # Verify zip structure — must extract to Acuity.app at root
+          if [ ! -d "$_extracted" ]; then
+            echo "ERROR: Acuity.app not at root of extracted zip"
+            ls "$_gk_tmp"
+            exit 1
+          fi
+          echo "✓ Zip extracts to Acuity.app/ at root"
+
+          # Apply quarantine (simulates what macOS adds to any download)
+          xattr -w com.apple.quarantine \
+            "0081;$(printf '%08x' $(date +%s));curl;test" \
+            "$_extracted" 2>/dev/null || true
+
+          # Gatekeeper — the exact check users fail if notarization is broken
+          if spctl --assess --type execute "$_extracted" 2>/dev/null; then
+            echo "✓ Gatekeeper ACCEPTS the artifact"
+          else
+            REASON=$(spctl --assess --type execute --verbose=4 "$_extracted" 2>&1 | grep -oE 'source=.*' | head -1 || echo "unknown")
+            echo "ERROR: Gatekeeper REJECTS the artifact (${REASON})"
+            echo "Users would see 'Acuity is damaged and can't be opened'"
+            echo "Fix before publishing — do NOT proceed with release."
+            rm -rf "$_gk_tmp"
+            exit 1
+          fi
+
+          # Staple ticket — required for offline Gatekeeper pass
+          if xcrun stapler validate "$_extracted" 2>/dev/null | grep -q "The validate action worked"; then
+            echo "✓ Notarization staple ticket present"
+          else
+            echo "ERROR: Notarization staple ticket MISSING"
+            echo "Offline users (strict Gatekeeper policy) will see 'damaged'."
+            rm -rf "$_gk_tmp"
+            exit 1
+          fi
+
+          rm -rf "$_gk_tmp"
+          echo "✓ Artifact verified — safe to publish"
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          # Auto-generate from git log since last tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+          if [[ -n "$PREV_TAG" ]]; then
+            NOTES=$(git log --oneline "${PREV_TAG}..HEAD" | grep -v "^[a-f0-9]* chore\|^[a-f0-9]* docs\|^[a-f0-9]* Release" | head -20 | sed 's/^[a-f0-9]* /- /')
+          else
+            NOTES="Initial release"
+          fi
+          echo "NOTES<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Acuity ${{ github.ref_name }}
+          body: |
+            ${{ steps.notes.outputs.NOTES }}
+
+            **Installation**: Download `Acuity-${{ steps.version.outputs.VERSION }}.zip`, extract, move to `/Applications`.
+
+            Or via Homebrew:
+            ```
+            brew install --cask paulhkang94/acuity/acuity
+            ```
+          files: |
+            ${{ env.ARTIFACT }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Homebrew tap update is handled by tap-update.yml, triggered automatically
+      # by the GitHub "release: published" event above. No tap steps needed here.
+      # To manually re-run: gh workflow run tap-update.yml --field tag_name=vX.Y.Z
