@@ -3,7 +3,7 @@ description: >
   Native macOS HiDPI scaling tool for external monitors with MCP server.
   Enable Retina-quality display modes on any external monitor without SIP disable or private entitlements.
 license: MIT
-homepage: https://github.com/paulhkang94/extradisplay
+homepage: https://github.com/paulhkang94/acuity
 
 build:
   dockerfile: null
