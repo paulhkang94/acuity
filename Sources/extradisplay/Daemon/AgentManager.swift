@@ -109,7 +109,7 @@ public struct AgentManager {
             let appBundle = executablePath
                 .deletingLastPathComponent()  // MacOS/
                 .deletingLastPathComponent()  // Contents/
-                .deletingLastPathComponent()  // ExtradisplayApp.app
+                .deletingLastPathComponent()  // Acuity.app
             return """
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"

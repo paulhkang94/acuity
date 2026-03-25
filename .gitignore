@@ -3,9 +3,13 @@ build/
 .swiftpm/
 *.xcodeproj/
 DerivedData/
+*.xcuserdata
 .DS_Store
+*.swp
 *.log
 .claude/
 __pycache__/
 *.pyc
 .pytest_cache/
+node_modules/
+npm/.smithery/

@@ -1,0 +1,58 @@
+name: acuity
+description: >
+  Native macOS HiDPI scaling tool for external monitors with MCP server.
+  Enable Retina-quality display modes on any external monitor without SIP disable or private entitlements.
+license: MIT
+homepage: https://github.com/paulhkang94/extradisplay
+
+build:
+  dockerfile: null
+
+startCommand:
+  type: stdio
+  command: npx
+  args:
+    - "-y"
+    - "mcp-server-acuity"
+
+tools:
+  - name: list_displays
+    description: >
+      List connected external displays and their current HiDPI status.
+      Returns display name, resolution, and whether HiDPI scaling is active.
+    inputSchema:
+      type: object
+      properties: {}
+
+  - name: enable_hidpi
+    description: >
+      Enable HiDPI scaling for a display by display ID or name.
+      Writes a custom display plist and triggers display reconfiguration.
+      Requires sudo on Intel Macs; user-writable on Apple Silicon.
+    inputSchema:
+      type: object
+      properties:
+        display_id:
+          type: string
+          description: Display identifier (from list_displays)
+      required:
+        - display_id
+
+  - name: set_brightness
+    description: >
+      Set display brightness via DDC/CI for a connected external monitor.
+      Value range is 0-100. Requires a DDC-capable display and connection.
+    inputSchema:
+      type: object
+      properties:
+        display_id:
+          type: string
+          description: Display identifier (from list_displays)
+        brightness:
+          type: integer
+          description: Brightness level 0-100
+          minimum: 0
+          maximum: 100
+      required:
+        - display_id
+        - brightness

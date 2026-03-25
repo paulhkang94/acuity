@@ -31,7 +31,7 @@ if [[ "$SKIP_INSTALL" != "--no-install" ]]; then
     echo ""
     echo "▶ Running install (this takes ~10s for build)"
     # Kill any running app instance first — open -a won't launch a second instance
-    pkill -f "ExtradisplayApp.app" 2>/dev/null || true
+    pkill -f "Acuity.app" 2>/dev/null || true
     sleep 1
     extradisplay uninstall 2>/dev/null || true
     # Truncate stale log so log checks only see fresh output
@@ -50,7 +50,7 @@ echo ""
 echo "▶ Binary checks"
 
 BINARY="/opt/homebrew/bin/extradisplay"
-APP="$HOME/Applications/ExtradisplayApp.app"
+APP="$HOME/Applications/Acuity.app"
 
 [[ -f "$BINARY" ]] && ok "CLI binary exists: $BINARY" || fail "CLI binary missing"
 OWNER=$(stat -f "%Su" "$BINARY" 2>/dev/null)
@@ -85,8 +85,8 @@ if [[ -f "$PLIST" ]]; then
     # Menubar mode uses `open -a App.app`; daemon mode uses the binary directly
     if [[ "$CMD" == "/usr/bin/open" ]]; then
         APP_ARG=$(plutil -extract ProgramArguments.2 raw "$PLIST" 2>/dev/null)
-        [[ "$APP_ARG" == *"ExtradisplayApp.app" ]] && \
-            ok "LaunchAgent uses open -a ExtradisplayApp.app (menubar mode)" || \
+        [[ "$APP_ARG" == *"Acuity.app" ]] && \
+            ok "LaunchAgent uses open -a Acuity.app (menubar mode)" || \
             fail "LaunchAgent open -a target wrong: $APP_ARG"
         KEEPALIVE=$(plutil -extract KeepAlive raw "$PLIST" 2>/dev/null)
         [[ "$KEEPALIVE" == "false" ]] && ok "KeepAlive=false (open exits immediately)" || fail "KeepAlive should be false for open -a mode"
@@ -104,19 +104,19 @@ echo ""
 echo "▶ Process checks (waiting up to 8s for startup)"
 
 for i in $(seq 1 10); do
-    if pgrep -f "ExtradisplayApp.app" >/dev/null 2>&1; then
+    if pgrep -f "Acuity.app" >/dev/null 2>&1; then
         break
     fi
     sleep 1
 done
 
-PID=$(pgrep -f "ExtradisplayApp.app" 2>/dev/null | head -1 || echo "")
+PID=$(pgrep -f "Acuity.app" 2>/dev/null | head -1 || echo "")
 if [[ -n "$PID" ]]; then
-    ok "ExtradisplayApp running (PID $PID)"
+    ok "Acuity running (PID $PID)"
     PROC_USER=$(ps -o user= -p "$PID" 2>/dev/null | tr -d ' ')
     [[ "$PROC_USER" != "root" ]] && ok "Process running as user ($PROC_USER)" || fail "Process running as root — will have issues"
 else
-    fail "ExtradisplayApp not running after 10s"
+    fail "Acuity not running after 10s"
     info "Agent status: $(launchctl list com.extradisplay.agent 2>/dev/null | grep LastExitStatus || echo unknown)"
 fi
 

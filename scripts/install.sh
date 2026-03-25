@@ -22,9 +22,9 @@ bash scripts/build-app.sh
 
 echo "▶ Installing app bundle..."
 mkdir -p "$HOME/Applications"
-rm -rf "$HOME/Applications/ExtradisplayApp.app"
-cp -r build/ExtradisplayApp.app "$HOME/Applications/ExtradisplayApp.app"
-echo "  ✓ App: $HOME/Applications/ExtradisplayApp.app"
+rm -rf "$HOME/Applications/Acuity.app"
+cp -r build/Acuity.app "$HOME/Applications/Acuity.app"
+echo "  ✓ App: $HOME/Applications/Acuity.app"
 
 echo "▶ Installing CLI binary..."
 if [[ -d /opt/homebrew/bin ]]; then
@@ -36,7 +36,7 @@ fi
 # Copy from the bundle binary (post-codesign) so CLI and bundle stay in sync.
 # rm first — can't overwrite a root-owned file even if the directory is user-writable.
 rm -f "$INSTALL_DIR/extradisplay"
-cp "$HOME/Applications/ExtradisplayApp.app/Contents/MacOS/extradisplay" "$INSTALL_DIR/extradisplay"
+cp "$HOME/Applications/Acuity.app/Contents/MacOS/extradisplay" "$INSTALL_DIR/extradisplay"
 echo "  ✓ CLI: $INSTALL_DIR/extradisplay"
 
 echo "▶ Registering LaunchAgent..."

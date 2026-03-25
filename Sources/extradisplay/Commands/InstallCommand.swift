@@ -61,7 +61,7 @@ struct InstallCommand: ParsableCommand {
         // Prefer the app bundle binary (enables NSApplication / menubar via launchd).
         // Fall back to the CLI binary in daemon mode if the bundle isn't installed yet.
         let bundleBinary = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Applications/ExtradisplayApp.app/Contents/MacOS/extradisplay")
+            .appendingPathComponent("Applications/Acuity.app/Contents/MacOS/extradisplay")
 
         let (launchPath, launchCommand): (URL, String) = {
             if FileManager.default.fileExists(atPath: bundleBinary.path) {
@@ -111,7 +111,7 @@ struct UninstallCommand: ParsableCommand {
         // a reinstall starts a fresh instance with the new binary.
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
-        task.arguments = ["-f", "ExtradisplayApp.app"]
+        task.arguments = ["-f", "Acuity.app"]
         try? task.run(); task.waitUntilExit()
 
         // Step 2: Remove the LaunchAgent.

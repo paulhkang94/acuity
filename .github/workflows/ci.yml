@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+# Cancel in-progress runs for the same branch/PR to save runner minutes
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Use runner's default Swift (matches system SDK)
+      - name: Swift version
+        run: swift --version
+
+      # Cache SPM dependencies for faster builds
+      - name: Cache SPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/.cache/org.swift.swiftpm
+          key: spm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Build (debug)
+        run: swift build
+
+      - name: Build (release)
+        run: swift build -c release
+
+      - name: Run tests
+        run: swift test
+
+  bundle:
+    name: App Bundle
+    runs-on: macos-15
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache SPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/.cache/org.swift.swiftpm
+          key: spm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Build release binary
+        run: swift build -c release
+
+      - name: Assemble Acuity.app
+        run: bash scripts/build-app.sh
+
+      - name: Verify bundle structure
+        run: |
+          if [[ ! -d "build/Acuity.app" ]]; then
+            echo "::error::build/Acuity.app not found"
+            exit 1
+          fi
+          if [[ ! -f "build/Acuity.app/Contents/MacOS/extradisplay" ]]; then
+            echo "::error::binary missing: build/Acuity.app/Contents/MacOS/extradisplay"
+            exit 1
+          fi
+          if [[ ! -f "build/Acuity.app/Contents/Info.plist" ]]; then
+            echo "::error::Info.plist missing from bundle"
+            exit 1
+          fi
+          echo "✓ Acuity.app bundle structure verified"
+          echo "  Binary: $(file build/Acuity.app/Contents/MacOS/extradisplay | cut -d: -f2)"

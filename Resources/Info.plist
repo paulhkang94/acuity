@@ -4,9 +4,9 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.extradisplay.app</string>
+    <string>com.paulkang.acuity</string>
     <key>CFBundleName</key>
-    <string>extradisplay</string>
+    <string>Acuity</string>
     <key>CFBundleExecutable</key>
     <string>extradisplay</string>
     <key>CFBundleVersion</key>
