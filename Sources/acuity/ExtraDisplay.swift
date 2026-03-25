@@ -4,7 +4,7 @@ import Foundation
 
 struct ExtraDisplay: ParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "extradisplay",
+        commandName: "acuity",
         abstract: "Enable HiDPI scaling on external monitors without SIP or private entitlements.",
         version: "0.1.0",
         subcommands: [

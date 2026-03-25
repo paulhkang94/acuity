@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Assembles Acuity.app from the compiled extradisplay binary.
+# Assembles Acuity.app from the compiled acuity binary.
 # Must be run AFTER swift build -c release.
 # Output: build/Acuity.app/
 
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BINARY="$REPO_ROOT/.build/release/extradisplay"
+BINARY="$REPO_ROOT/.build/release/acuity"
 APP_OUT="$REPO_ROOT/build/Acuity.app"
 CONTENTS="$APP_OUT/Contents"
 
 [[ -f "$BINARY" ]] || { echo "error: build binary first: swift build -c release"; exit 1; }
 
 mkdir -p "$CONTENTS/MacOS"
-cp "$BINARY" "$CONTENTS/MacOS/extradisplay"
+cp "$BINARY" "$CONTENTS/MacOS/acuity"
 cp "$REPO_ROOT/Resources/Info.plist" "$CONTENTS/Info.plist"
 
 # Ad-hoc code sign so Gatekeeper doesn't block it

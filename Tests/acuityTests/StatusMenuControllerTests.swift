@@ -1,6 +1,6 @@
 import AppKit
 import XCTest
-@testable import extradisplay
+@testable import acuity
 
 final class StatusMenuControllerTests: XCTestCase {
 

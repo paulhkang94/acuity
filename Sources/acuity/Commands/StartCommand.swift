@@ -18,7 +18,7 @@ struct StartCommand: ParsableCommand {
     }()
 
     private static func log(_ message: String) {
-        let line = "[extradisplay] \(message)\n"
+        let line = "[acuity] \(message)\n"
         if let handle = FileHandle(forWritingAtPath: logPath) {
             handle.seekToEndOfFile()
             handle.write(line.data(using: .utf8)!)

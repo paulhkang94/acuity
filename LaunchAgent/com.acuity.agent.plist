@@ -3,10 +3,10 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.extradisplay.agent</string>
+    <string>com.acuity.agent</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/extradisplay</string>
+        <string>/usr/local/bin/acuity</string>
         <string>start</string>
     </array>
     <key>RunAtLoad</key>
@@ -14,6 +14,6 @@
     <key>KeepAlive</key>
     <true/>
     <key>StandardErrorPath</key>
-    <string>/tmp/extradisplay.log</string>
+    <string>/tmp/acuity.log</string>
 </dict>
 </plist>

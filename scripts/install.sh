@@ -35,11 +35,11 @@ else
 fi
 # Copy from the bundle binary (post-codesign) so CLI and bundle stay in sync.
 # rm first — can't overwrite a root-owned file even if the directory is user-writable.
-rm -f "$INSTALL_DIR/extradisplay"
-cp "$HOME/Applications/Acuity.app/Contents/MacOS/extradisplay" "$INSTALL_DIR/extradisplay"
-echo "  ✓ CLI: $INSTALL_DIR/extradisplay"
+rm -f "$INSTALL_DIR/acuity"
+cp "$HOME/Applications/Acuity.app/Contents/MacOS/acuity" "$INSTALL_DIR/acuity"
+echo "  ✓ CLI: $INSTALL_DIR/acuity"
 
 echo "▶ Registering LaunchAgent..."
 # Uninstall first (idempotent) then install fresh
-"$INSTALL_DIR/extradisplay" uninstall 2>/dev/null || true
-"$INSTALL_DIR/extradisplay" install
+"$INSTALL_DIR/acuity" uninstall 2>/dev/null || true
+"$INSTALL_DIR/acuity" install

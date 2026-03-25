@@ -1,12 +1,12 @@
 # Spec: App Bundle + Robust Install
-**Goal:** Make `extradisplay install` a one-time operation that permanently auto-starts the menubar at login.
+**Goal:** Make `acuity install` a one-time operation that permanently auto-starts the menubar at login.
 **Verify:** `scripts/claude-verify.sh --all` must pass before committing.
 
 ---
 
 ## Root Cause (confirmed)
 
-NSApplication cannot connect to WindowServer when spawned by launchd from a **bare binary** (no `.app` bundle / Info.plist). macOS requires an app bundle context to grant WindowServer access to launchd-spawned GUI processes. This is why `extradisplay start` exits EX_CONFIG (78) from the LaunchAgent but works from Terminal.
+NSApplication cannot connect to WindowServer when spawned by launchd from a **bare binary** (no `.app` bundle / Info.plist). macOS requires an app bundle context to grant WindowServer access to launchd-spawned GUI processes. This is why `acuity start` exits EX_CONFIG (78) from the LaunchAgent but works from Terminal.
 
 **The fix:** Create `ExtradisplayApp.app` — a thin app bundle wrapper around the existing binary. The LaunchAgent points to the binary *inside* the bundle. macOS loads the bundle's `Info.plist`, NSApplication gets WindowServer access, and the menubar starts correctly at every login.
 
@@ -23,7 +23,7 @@ NSApplication cannot connect to WindowServer when spawned by launchd from a **ba
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.extradisplay.app</string>
+    <string>com.paulkang.acuity</string>
     <key>CFBundleName</key>
     <string>extradisplay</string>
     <key>CFBundleExecutable</key>
@@ -54,7 +54,7 @@ NSApplication cannot connect to WindowServer when spawned by launchd from a **ba
 
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BINARY="$REPO_ROOT/.build/release/extradisplay"
+BINARY="$REPO_ROOT/.build/release/acuity"
 APP_OUT="$REPO_ROOT/build/ExtradisplayApp.app"
 CONTENTS="$APP_OUT/Contents"
 
@@ -104,7 +104,7 @@ else
 fi
 # rm first — can't overwrite root-owned file even if directory is user-writable
 rm -f "$INSTALL_DIR/extradisplay"
-cp .build/release/extradisplay "$INSTALL_DIR/extradisplay"
+cp .build/release/acuity "$INSTALL_DIR/extradisplay"
 echo "  ✓ CLI: $INSTALL_DIR/extradisplay"
 
 echo "▶ Installing app bundle..."
@@ -133,7 +133,7 @@ import Foundation
 // When launched from inside an app bundle (e.g., via LaunchAgent pointing to
 // ~/Applications/ExtradisplayApp.app/Contents/MacOS/extradisplay),
 // default to `start` so the menubar launches automatically.
-// All explicit subcommand invocations (e.g., `extradisplay list`) are unaffected.
+// All explicit subcommand invocations (e.g., `acuity list`) are unaffected.
 var args = CommandLine.arguments
 if args.count == 1, Bundle.main.bundlePath.hasSuffix(".app") {
     args.append("start")
@@ -250,8 +250,8 @@ bash scripts/install.sh
 
 # Verify menubar is running
 sleep 3
-launchctl list com.extradisplay.agent
-cat /tmp/extradisplay.log | tail -5
+launchctl list com.acuity.agent
+cat /tmp/acuity.log | tail -5
 # Should show: "[extradisplay] ReconfigurationWatcher started."
 # AND:         "[extradisplay] BrightnessKeyInterceptor: listening for brightness keys."
 # (NOT just: "[extradisplay] daemon starting")
@@ -271,7 +271,7 @@ feat: app bundle wrapper + robust one-shot install
 
 NSApplication cannot connect to WindowServer when spawned by launchd
 from a bare binary (no .app bundle / Info.plist). This caused
-extradisplay start to exit EX_CONFIG (78) from the LaunchAgent.
+acuity start to exit EX_CONFIG (78) from the LaunchAgent.
 
 Fix: create ExtradisplayApp.app — a thin bundle wrapping the existing
 binary. The LaunchAgent points to the binary inside the bundle; macOS

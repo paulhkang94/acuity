@@ -11,10 +11,10 @@ struct InstallCommand: ParsableCommand {
         // AppKit (linked for the menubar) cannot connect to WindowServer as root —
         // macOS SIGKILLs any root process that loads it. install/uninstall only
         // write to ~/Library/LaunchAgents and bootstrap the user's launchd domain;
-        // neither needs root. Only `sudo extradisplay enable` requires elevation.
+        // neither needs root. Only `sudo acuity enable` requires elevation.
         if getuid() == 0 {
             fputs("error: do not run 'extradisplay install' with sudo.\n", stderr)
-            fputs("Only 'sudo extradisplay enable --all' requires root.\n", stderr)
+            fputs("Only 'sudo acuity enable --all' requires root.\n", stderr)
             fputs("Run: extradisplay install\n", stderr)
             throw ExitCode.failure
         }

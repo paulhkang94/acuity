@@ -1,5 +1,5 @@
 import XCTest
-@testable import extradisplay
+@testable import acuity
 
 /// Tests for HiDPIEntry binary encoding.
 ///

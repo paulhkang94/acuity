@@ -2,18 +2,18 @@
 import PackageDescription
 
 let package = Package(
-    name: "extradisplay",
+    name: "acuity",
     platforms: [.macOS(.v13)],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
     ],
     targets: [
         .executableTarget(
-            name: "extradisplay",
+            name: "acuity",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
-            path: "Sources/extradisplay",
+            path: "Sources/acuity",
             linkerSettings: [
                 .linkedFramework("IOKit"),
                 .linkedFramework("CoreGraphics"),
@@ -21,9 +21,9 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "extradisplayTests",
-            dependencies: ["extradisplay"],
-            path: "Tests/extradisplayTests"
+            name: "acuityTests",
+            dependencies: ["acuity"],
+            path: "Tests/acuityTests"
         ),
     ]
 )

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MCP server exposing extradisplay CLI as MCP tools over stdio (JSON-RPC 2.0)."""
+"""MCP server exposing acuity CLI as MCP tools over stdio (JSON-RPC 2.0)."""
 
 import json
 import shutil
@@ -19,7 +19,7 @@ TOOLS = [
         "description": (
             "Enable HiDPI (Retina) scaling on external displays. Writes override plists to "
             "/Library/Displays/. Requires sudo/root — either run this server as root, or add "
-            "'username ALL=(ALL) NOPASSWD: /usr/local/bin/extradisplay' to sudoers. "
+            "'username ALL=(ALL) NOPASSWD: /usr/local/bin/acuity' to sudoers. "
             "Reboot required to activate."
         ),
         "inputSchema": {
@@ -42,7 +42,7 @@ TOOLS = [
         "name": "disable_hidpi",
         "description": (
             "Remove HiDPI override plists. Requires sudo/root — either run this server as root, or "
-            "add 'username ALL=(ALL) NOPASSWD: /usr/local/bin/extradisplay' to sudoers. "
+            "add 'username ALL=(ALL) NOPASSWD: /usr/local/bin/acuity' to sudoers. "
             "Reboot required to deactivate."
         ),
         "inputSchema": {
@@ -91,7 +91,7 @@ TOOLS = [
 
 
 def find_cli() -> str:
-    return shutil.which("extradisplay") or "/usr/local/bin/extradisplay"
+    return shutil.which("acuity") or "/usr/local/bin/acuity"
 
 
 def run(cmd: list[str], use_sudo: bool = False) -> dict:
@@ -208,7 +208,7 @@ def handle_request(request: dict):
             {
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "extradisplay", "version": "0.1.0"},
+                "serverInfo": {"name": "acuity", "version": "0.1.0"},
             },
         )
 

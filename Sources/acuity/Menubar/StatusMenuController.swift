@@ -23,7 +23,7 @@ public final class StatusMenuController: NSObject {
     /// Call after NSApplication is running (from main queue).
     public func setup() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.image = NSImage(systemSymbolName: "display", accessibilityDescription: "extradisplay")
+        item.button?.image = NSImage(systemSymbolName: "display", accessibilityDescription: "acuity")
         item.button?.image?.isTemplate = true
         statusItem = item
         rebuildMenu()
@@ -35,7 +35,7 @@ public final class StatusMenuController: NSObject {
     public func rebuildMenu() {
         displays = DisplayEnumerator.allDisplays()
 
-        let menu = NSMenu(title: "extradisplay")
+        let menu = NSMenu(title: "acuity")
         menu.delegate = self
 
         populateMenu(menu)
@@ -76,7 +76,7 @@ public final class StatusMenuController: NSObject {
 
         // Quit
         let quitItem = NSMenuItem(
-            title: "Quit extradisplay",
+            title: "Quit Acuity",
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
         )
@@ -87,7 +87,7 @@ public final class StatusMenuController: NSObject {
         // Show a brief alert if not running as root
         let alert = NSAlert()
         alert.messageText = "Enable HiDPI on All Displays"
-        alert.informativeText = "Run the following command in Terminal:\n\nsudo extradisplay enable --all"
+        alert.informativeText = "Run the following command in Terminal:\n\nsudo acuity enable --all"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
         NSApp.activate(ignoringOtherApps: true)

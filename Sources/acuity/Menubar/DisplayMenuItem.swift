@@ -104,7 +104,7 @@ private final class InputSourceTarget: NSObject {
         do {
             try selection.ddc.setInput(selection.source, display: selection.display)
         } catch {
-            fputs("[extradisplay] InputSourceTarget: DDC error: \(error)\n", stderr)
+            fputs("[acuity] InputSourceTarget: DDC error: \(error)\n", stderr)
         }
     }
 }

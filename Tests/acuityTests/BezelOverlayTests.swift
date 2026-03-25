@@ -1,5 +1,5 @@
 import XCTest
-@testable import extradisplay
+@testable import acuity
 
 /// BezelServices may not be available in CI — these tests verify that showBrightness
 /// never crashes regardless of framework availability.

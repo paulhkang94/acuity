@@ -3,7 +3,7 @@ import XCTest
 class AppBundleTests: XCTestCase {
     func test_infoPlistExists() {
         let plist = URL(fileURLWithPath: #file)
-            .deletingLastPathComponent()  // extradisplayTests
+            .deletingLastPathComponent()  // acuityTests
             .deletingLastPathComponent()  // Tests
             .deletingLastPathComponent()  // repo root
             .appendingPathComponent("Resources/Info.plist")

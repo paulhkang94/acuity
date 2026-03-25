@@ -21,28 +21,28 @@ extradisplay automates the override generation, handles display reconnection via
 ./scripts/install.sh
 
 # 2. Enable HiDPI for all connected external displays (requires sudo)
-sudo extradisplay enable --all
+sudo acuity enable --all
 
 # 3. Reboot to activate the new display modes
 sudo reboot
 
 # 4. Install the daemon so overrides re-apply automatically on reconnect
-extradisplay install
+acuity install
 ```
 
 ## Commands
 
 | Command | Description |
 | --- | --- |
-| `extradisplay list` | List connected external displays and HiDPI status |
-| `extradisplay status` | Show override status for each display |
-| `extradisplay enable --all` | Write HiDPI override plists for all external displays |
-| `extradisplay enable --display 0xVID:0xPID` | Enable for a specific display |
-| `extradisplay disable --all` | Remove override plists |
-| `extradisplay brightness <0-100>` | Set brightness via DDC/CI |
+| `acuity list` | List connected external displays and HiDPI status |
+| `acuity status` | Show override status for each display |
+| `acuity enable --all` | Write HiDPI override plists for all external displays |
+| `acuity enable --display 0xVID:0xPID` | Enable for a specific display |
+| `acuity disable --all` | Remove override plists |
+| `acuity brightness <0-100>` | Set brightness via DDC/CI |
 | `extradisplay contrast <0-100>` | Set contrast via DDC/CI |
 | `extradisplay input <source>` | Switch input (hdmi1, hdmi2, dp1, dp2, usbc) |
-| `extradisplay install` | Install the LaunchAgent daemon |
+| `acuity install` | Install the LaunchAgent daemon |
 | `extradisplay uninstall` | Remove the LaunchAgent daemon |
 | `extradisplay uninstall --clean` | Remove daemon and all override plists |
 
@@ -52,7 +52,7 @@ macOS exposes HiDPI modes when it finds a matching override plist under `/Librar
 
 extradisplay generates these entries for standard scaled resolutions (2×, 1.5×, and a full ladder), writes them to the correct path, and sets the `DisplayResolutionEnabled` WindowServer default. On reboot, macOS picks up the new modes.
 
-The daemon (`extradisplay daemon`) uses `CGDisplayRegisterReconfigurationCallback` to watch for display connection events and re-applies the HiDPI mode automatically when a known display reconnects — useful for docking stations and KVM switches.
+The daemon (`acuity daemon`) uses `CGDisplayRegisterReconfigurationCallback` to watch for display connection events and re-applies the HiDPI mode automatically when a known display reconnects — useful for docking stations and KVM switches.
 
 DDC/CI control uses the private `IOAVService` framework, accessed via `dlsym` (no entitlement required). Currently supported on Apple Silicon Macs.
 
@@ -62,7 +62,7 @@ Any external monitor with an EDID. Tested on:
 
 - Dell S2721DGF (QHD, 27")
 
-If your display is not recognized or produces unexpected results, open an issue with the output of `extradisplay list --json`.
+If your display is not recognized or produces unexpected results, open an issue with the output of `acuity list --json`.
 
 ## DDC features
 
@@ -76,7 +76,7 @@ If your display is not recognized or produces unexpected results, open an issue 
 2. `swift build` to build, `swift test` to run tests
 3. Open a pull request with a description of what changed and why
 
-Bug reports with `extradisplay list --json` output and macOS version are appreciated.
+Bug reports with `acuity list --json` output and macOS version are appreciated.
 
 ## License
 

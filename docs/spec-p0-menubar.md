@@ -6,7 +6,7 @@
 
 ## Goal
 Implement three P0 features as a single atomic commit:
-1. `extradisplay start` — menubar app (NSStatusItem + NSMenu, per-display brightness sliders + input picker + HiDPI toggle)
+1. `acuity start` — menubar app (NSStatusItem + NSMenu, per-display brightness sliders + input picker + HiDPI toggle)
 2. Keyboard brightness keys — IOHIDManager intercepts Fn-brightness keys → DDC on all external monitors
 3. OSD overlay — BezelServices wrapper shows macOS-native brightness indicator on DDC change
 
@@ -72,7 +72,7 @@ Menu structure (rebuild on every open via `menuWillOpen`):
   Brightness   [slider]
   Input: <current> ▶
 ─────────────────────
-Enable HiDPI on All...   [calls: sudo extradisplay enable --all — shows install prompt if not root]
+Enable HiDPI on All...   [calls: sudo acuity enable --all — shows install prompt if not root]
 ─────────────────────
 Quit
 ```
@@ -173,7 +173,7 @@ struct StartCommand: ParsableCommand {
         let controller = StatusMenuController(ddc: ddc)
         let keyInterceptor = BrightnessKeyInterceptor(ddc: ddc)
 
-        // Also start the display reconfiguration watcher (same as `extradisplay daemon`)
+        // Also start the display reconfiguration watcher (same as `acuity daemon`)
         let watcher = ReconfigurationWatcher()
         try watcher.start()
 
@@ -191,7 +191,7 @@ struct StartCommand: ParsableCommand {
 
 Register in `ExtraDisplay.swift`: add `StartCommand.self` to the `subcommands` array.
 
-### 7. Update `LaunchAgent/com.extradisplay.agent.plist`
+### 7. Update `LaunchAgent/com.acuity.agent.plist`
 
 Change `ProgramArguments` from:
 ```xml
@@ -282,7 +282,7 @@ Expected:
 ```bash
 # Build and launch menubar
 swift build -c release
-.build/release/extradisplay start &
+.build/release/acuity start &
 sleep 2
 
 # Screenshot to verify menubar icon appeared
@@ -290,7 +290,7 @@ screencapture -x /tmp/menubar_smoke.png
 open /tmp/menubar_smoke.png
 
 # Kill the menubar process
-pkill -f "extradisplay start"
+pkill -f "acuity start"
 ```
 
 The screenshot should show the extradisplay icon in the macOS menubar (monitor icon, template image).

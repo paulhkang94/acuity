@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BINARY=/usr/local/bin/extradisplay
-AGENT_LABEL="com.extradisplay.agent"
+BINARY=/usr/local/bin/acuity
+AGENT_LABEL="com.acuity.agent"
 AGENT_PLIST="$HOME/Library/LaunchAgents/${AGENT_LABEL}.plist"
 OVERRIDES_DIR="/Library/Displays/Contents/Resources/Overrides"
 
@@ -15,7 +15,7 @@ for arg in "$@"; do
     esac
 done
 
-echo "Uninstalling extradisplay..."
+echo "Uninstalling acuity..."
 
 # 1. Unload and remove the LaunchAgent
 if launchctl list "$AGENT_LABEL" &>/dev/null; then

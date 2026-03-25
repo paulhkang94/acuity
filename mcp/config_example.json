@@ -1,11 +1,11 @@
 {
   "_comment": "Add this to your Claude Code MCP settings or ~/.claude.json mcpServers section",
   "mcpServers": {
-    "extradisplay": {
+    "acuity": {
       "command": "python3",
-      "args": ["/usr/local/bin/extradisplay-mcp"],
+      "args": ["/usr/local/bin/acuity-mcp"],
       "env": {},
-      "_note": "Install: sudo cp mcp/server.py /usr/local/bin/extradisplay-mcp && chmod +x /usr/local/bin/extradisplay-mcp. For enable/disable tools, add to sudoers: username ALL=(ALL) NOPASSWD: /usr/local/bin/extradisplay"
+      "_note": "Install: sudo cp mcp/server.py /usr/local/bin/acuity-mcp && chmod +x /usr/local/bin/acuity-mcp. For enable/disable tools, add to sudoers: username ALL=(ALL) NOPASSWD: /usr/local/bin/acuity"
     }
   }
 }

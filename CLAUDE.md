@@ -69,7 +69,7 @@ Tests/extradisplayTests/  — XCTest (19 tests)
 pytests/                  — pytest (9 tests, covers scripts/hidpi.py)
 scripts/                  — install.sh, uninstall.sh, hidpi.py, claude-verify.sh
 mcp/                      — MCP server (server.py + config_example.json)
-LaunchAgent/              — com.extradisplay.agent.plist
+LaunchAgent/              — com.acuity.agent.plist
 ```
 
 ## Testing
@@ -79,7 +79,7 @@ LaunchAgent/              — com.extradisplay.agent.plist
 - Single test: `swift test --filter ClassName/methodName`
 
 ## Build
-- `swift build -c release` → `.build/release/extradisplay`
+- `swift build -c release` → `.build/release/acuity`
 - Install system-wide: `sudo bash scripts/install.sh`
 
 ## Rules
@@ -88,7 +88,7 @@ LaunchAgent/              — com.extradisplay.agent.plist
 - New CLI commands: add to `Sources/extradisplay/Commands/` and register in `ExtraDisplay.swift`
 - DDC requires physical monitors — abstract behind `protocol DDCControlling`; inject mock in tests
 - `BezelServices` and `IOAVService`: load via `dlopen`/`dlsym` only, never link directly
-- `extradisplay start` runs NSApplication in `.accessory` mode; call `setsid()` before `NSApplication.shared.run()` to detach from terminal
+- `acuity start` runs NSApplication in `.accessory` mode; call `setsid()` before `NSApplication.shared.run()` to detach from terminal
 
 ## Gotchas
 

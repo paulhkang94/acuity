@@ -1,11 +1,11 @@
 import XCTest
-@testable import extradisplay
+@testable import acuity
 
 /// Tests for PlistWriter.
 ///
 /// Critical Tier 2 requirement: tests must call PlistWriter.write() directly
 /// (the real method), not a private helper — so we catch bugs in the actual
-/// code path that runs when the user runs `extradisplay enable`.
+/// code path that runs when the user runs `acuity enable`.
 final class PlistWriterTests: XCTestCase {
 
     // MARK: - Path construction
@@ -170,7 +170,7 @@ final class PlistWriterTests: XCTestCase {
 
     private func makeTempBase() -> URL {
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("extradisplay-tests-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("acuity-tests-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }

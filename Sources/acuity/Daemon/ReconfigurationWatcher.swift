@@ -35,7 +35,7 @@ public final class ReconfigurationWatcher {
             Unmanaged.passUnretained(self).toOpaque()
         )
 
-        fputs("[extradisplay] ReconfigurationWatcher started.\n", stderr)
+        fputs("[acuity] ReconfigurationWatcher started.\n", stderr)
     }
 
     /// Removes the display reconfiguration callback.
@@ -48,7 +48,7 @@ public final class ReconfigurationWatcher {
             Unmanaged.passUnretained(self).toOpaque()
         )
 
-        fputs("[extradisplay] ReconfigurationWatcher stopped.\n", stderr)
+        fputs("[acuity] ReconfigurationWatcher stopped.\n", stderr)
     }
 
     // MARK: - Display-add handler
@@ -58,7 +58,7 @@ public final class ReconfigurationWatcher {
         let productID = UInt32(CGDisplayModelNumber(displayID))
 
         fputs(
-            "[extradisplay] Display connected: \(String(format: "0x%04X", vendorID)):"
+            "[acuity] Display connected: \(String(format: "0x%04X", vendorID)):"
             + "\(String(format: "0x%04X", productID)) — waiting 2s for stabilization.\n",
             stderr
         )
@@ -80,7 +80,7 @@ public final class ReconfigurationWatcher {
 
         guard FileManager.default.fileExists(atPath: plistURL.path) else {
             fputs(
-                "[extradisplay] No override plist for \(String(format: "0x%04X", vendorID)):"
+                "[acuity] No override plist for \(String(format: "0x%04X", vendorID)):"
                 + "\(String(format: "0x%04X", productID)) — skipping.\n",
                 stderr
             )
@@ -88,7 +88,7 @@ public final class ReconfigurationWatcher {
         }
 
         fputs(
-            "[extradisplay] Override found — attempting to apply HiDPI mode for display \(displayID).\n",
+            "[acuity] Override found — attempting to apply HiDPI mode for display \(displayID).\n",
             stderr
         )
 
@@ -117,7 +117,7 @@ public final class ReconfigurationWatcher {
             let getModeDescPtr     = dlsym(handle, "CGSGetDisplayModeDescriptionOfLength"),
             let configureModePtr   = dlsym(handle, "CGSConfigureDisplayMode")
         else {
-            fputs("[extradisplay] Failed to resolve CGS private APIs via dlsym.\n", stderr)
+            fputs("[acuity] Failed to resolve CGS private APIs via dlsym.\n", stderr)
             return
         }
 
@@ -127,7 +127,7 @@ public final class ReconfigurationWatcher {
 
         let count = getNumberOfModes(displayID)
         guard count > 0 else {
-            fputs("[extradisplay] No display modes returned for display \(displayID).\n", stderr)
+            fputs("[acuity] No display modes returned for display \(displayID).\n", stderr)
             return
         }
 
@@ -159,32 +159,32 @@ public final class ReconfigurationWatcher {
         }
 
         guard bestModeIndex >= 0 else {
-            fputs("[extradisplay] No HiDPI modes found for display \(displayID).\n", stderr)
+            fputs("[acuity] No HiDPI modes found for display \(displayID).\n", stderr)
             return
         }
 
         var configRef: CGDisplayConfigRef?
         guard CGBeginDisplayConfiguration(&configRef) == .success else {
-            fputs("[extradisplay] CGBeginDisplayConfiguration failed.\n", stderr)
+            fputs("[acuity] CGBeginDisplayConfiguration failed.\n", stderr)
             return
         }
 
         let setResult = configureMode(configRef, displayID, bestModeIndex)
         guard setResult == .success else {
             CGCancelDisplayConfiguration(configRef)
-            fputs("[extradisplay] CGSConfigureDisplayMode failed: \(setResult.rawValue).\n", stderr)
+            fputs("[acuity] CGSConfigureDisplayMode failed: \(setResult.rawValue).\n", stderr)
             return
         }
 
         let applyResult = CGCompleteDisplayConfiguration(configRef, .permanently)
         if applyResult == .success {
             fputs(
-                "[extradisplay] HiDPI mode (index \(bestModeIndex)) applied successfully "
+                "[acuity] HiDPI mode (index \(bestModeIndex)) applied successfully "
                 + "for display \(displayID).\n",
                 stderr
             )
         } else {
-            fputs("[extradisplay] CGCompleteDisplayConfiguration failed: \(applyResult.rawValue).\n", stderr)
+            fputs("[acuity] CGCompleteDisplayConfiguration failed: \(applyResult.rawValue).\n", stderr)
         }
     }
 }

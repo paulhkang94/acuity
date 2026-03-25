@@ -21,7 +21,7 @@ if [[ ! -d "$APP_PATH" ]]; then
 fi
 
 # ── Step 1: Sign any nested binaries first (inside-out) ─────────────────────
-# Acuity.app currently contains only one binary (extradisplay). There are no
+# Acuity.app contains one binary (acuity). There are no
 # embedded frameworks or helper tools, so the loop below is a no-op in practice.
 # It's included so adding nested binaries in the future doesn't break signing.
 find "$APP_PATH/Contents" -type f \( -name "*.dylib" -o -name "*.framework" \) | while read -r nested; do

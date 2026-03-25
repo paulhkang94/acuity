@@ -95,7 +95,7 @@ public final class BrightnessSliderView: NSView {
                 try self.ddc.setBrightness(value, display: self.display)
                 BezelOverlay.showBrightness(Float(value) / 100.0)
             } catch {
-                fputs("[extradisplay] BrightnessSliderView: DDC error: \(error)\n", stderr)
+                fputs("[acuity] BrightnessSliderView: DDC error: \(error)\n", stderr)
             }
         }
         debounceItem = item

@@ -54,13 +54,13 @@ public final class BrightnessKeyInterceptor {
 
         let openResult = IOHIDManagerOpen(hidManager, IOOptionBits(kIOHIDOptionsTypeNone))
         guard openResult == kIOReturnSuccess else {
-            fputs("[extradisplay] BrightnessKeyInterceptor: IOHIDManagerOpen failed (\(openResult)) — brightness keys disabled.\n", stderr)
+            fputs("[acuity] BrightnessKeyInterceptor: IOHIDManagerOpen failed (\(openResult)) — brightness keys disabled.\n", stderr)
             IOHIDManagerUnscheduleFromRunLoop(hidManager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
             return false
         }
 
         self.manager = hidManager
-        fputs("[extradisplay] BrightnessKeyInterceptor: listening for brightness keys.\n", stderr)
+        fputs("[acuity] BrightnessKeyInterceptor: listening for brightness keys.\n", stderr)
         return true
     }
 
@@ -85,7 +85,7 @@ public final class BrightnessKeyInterceptor {
                 try ddc.setBrightness(newValue, display: display)
                 BezelOverlay.showBrightness(Float(newValue) / 100.0)
             } catch {
-                fputs("[extradisplay] BrightnessKeyInterceptor: DDC error for \(display.name): \(error)\n", stderr)
+                fputs("[acuity] BrightnessKeyInterceptor: DDC error for \(display.name): \(error)\n", stderr)
             }
         }
     }

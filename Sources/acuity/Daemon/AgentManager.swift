@@ -8,7 +8,7 @@ public struct AgentManager {
 
     // MARK: - Constants
 
-    public static let agentLabel = "com.extradisplay.agent"
+    public static let agentLabel = "com.acuity.agent"
 
     public static var plistPath: URL {
         // When run via sudo, homeDirectoryForCurrentUser returns root's home.
@@ -52,7 +52,7 @@ public struct AgentManager {
         // this is called via sudo.
         let uid = realUserUID()
         try runLaunchctl(["bootstrap", "gui/\(uid)", plistPath.path])
-        fputs("[extradisplay] LaunchAgent bootstrapped into gui/\(uid): \(plistPath.path)\n", stderr)
+        fputs("[acuity] LaunchAgent bootstrapped into gui/\(uid): \(plistPath.path)\n", stderr)
     }
 
     // MARK: - Uninstall
@@ -63,9 +63,9 @@ public struct AgentManager {
             let uid = realUserUID()
             _ = try? runLaunchctl(["bootout", "gui/\(uid)", plistPath.path])
             try FileManager.default.removeItem(at: plistPath)
-            fputs("[extradisplay] LaunchAgent removed: \(plistPath.path)\n", stderr)
+            fputs("[acuity] LaunchAgent removed: \(plistPath.path)\n", stderr)
         } else {
-            fputs("[extradisplay] LaunchAgent is not installed — nothing to remove.\n", stderr)
+            fputs("[acuity] LaunchAgent is not installed — nothing to remove.\n", stderr)
         }
     }
 

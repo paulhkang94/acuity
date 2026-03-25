@@ -1,5 +1,5 @@
 import XCTest
-@testable import extradisplay
+@testable import acuity
 
 final class BrightnessKeyInterceptorTests: XCTestCase {
 
@@ -111,7 +111,7 @@ extension BrightnessKeyInterceptor {
         do {
             try ddc.setBrightness(newValue, display: display)
         } catch {
-            fputs("[extradisplay] BrightnessKeyInterceptorTests: DDC error: \(error)\n", stderr)
+            fputs("[acuity] BrightnessKeyInterceptorTests: DDC error: \(error)\n", stderr)
         }
     }
 }
