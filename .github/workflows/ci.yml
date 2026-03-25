@@ -32,9 +32,9 @@ jobs:
           path: |
             .build
             ~/.cache/org.swift.swiftpm
-          key: spm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          key: v2-spm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
           restore-keys: |
-            spm-${{ runner.os }}-${{ runner.arch }}-
+            v2-spm-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build (debug)
         run: swift build
@@ -58,9 +58,9 @@ jobs:
           path: |
             .build
             ~/.cache/org.swift.swiftpm
-          key: spm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          key: v2-spm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.swift', 'Package.resolved') }}
           restore-keys: |
-            spm-${{ runner.os }}-${{ runner.arch }}-
+            v2-spm-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build release binary
         run: swift build -c release
