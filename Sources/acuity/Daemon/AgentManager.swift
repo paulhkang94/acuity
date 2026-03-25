@@ -1,9 +1,9 @@
 import Foundation
 
-/// Manages the extradisplay LaunchAgent that keeps HiDPI overrides active across reboots.
+/// Manages the Acuity LaunchAgent that keeps HiDPI overrides active across reboots.
 ///
-/// The agent runs `extradisplay daemon` at login and restarts on crash (KeepAlive).
-/// stdout/stderr are redirected to /tmp/extradisplay.log for diagnostics.
+/// The agent runs `acuity daemon` at login and restarts on crash (KeepAlive).
+/// stdout/stderr are redirected to ~/Library/Logs/acuity.log for diagnostics.
 public struct AgentManager {
 
     // MARK: - Constants
@@ -30,8 +30,8 @@ public struct AgentManager {
 
     /// Installs the LaunchAgent plist and loads it into launchd.
     ///
-    /// - Parameter executablePath: Absolute path to the `extradisplay` binary.
-    ///   Typically `/usr/local/bin/extradisplay`.
+    /// - Parameter executablePath: Absolute path to the `acuity` binary.
+    ///   Typically `/usr/local/bin/acuity`.
     /// - Parameter command: The subcommand the agent will run at login (default: "daemon").
     ///   Pass "start" when the binary lives inside an .app bundle.
     public static func install(executablePath: URL, command: String = "daemon") throws {
@@ -162,10 +162,10 @@ public struct AgentManager {
             <true/>
 
             <key>StandardOutPath</key>
-            <string>\(NSHomeDirectory())/Library/Logs/extradisplay.log</string>
+            <string>\(NSHomeDirectory())/Library/Logs/acuity.log</string>
 
             <key>StandardErrorPath</key>
-            <string>\(NSHomeDirectory())/Library/Logs/extradisplay.log</string>
+            <string>\(NSHomeDirectory())/Library/Logs/acuity.log</string>
         </dict>
         </plist>
         """

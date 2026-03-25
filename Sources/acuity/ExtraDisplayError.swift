@@ -1,6 +1,6 @@
 import Foundation
 
-/// Errors thrown by extradisplay commands.
+/// Errors thrown by Acuity commands.
 enum ExtraDisplayError: LocalizedError {
     case notRoot
     case noExternalDisplays
@@ -15,11 +15,11 @@ enum ExtraDisplayError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notRoot:
-            return "This command requires sudo. Run: sudo extradisplay \(CommandLine.arguments.dropFirst().joined(separator: " "))"
+            return "This command requires sudo. Run: sudo acuity \(CommandLine.arguments.dropFirst().joined(separator: " "))"
         case .noExternalDisplays:
             return "No external displays found."
         case .displayNotFound(let id):
-            return "Display not found: \(id). Run 'extradisplay list' to see connected displays."
+            return "Display not found: \(id). Run 'acuity list' to see connected displays."
         case .invalidDisplayArgument(let arg):
             return "Invalid display argument '\(arg)'. Expected VendorID:ProductID in hex (e.g. 0x0410:0x8291)."
         case .invalidPreset(let name, let valid):

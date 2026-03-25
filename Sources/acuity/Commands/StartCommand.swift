@@ -8,13 +8,13 @@ struct StartCommand: ParsableCommand {
         abstract: "Start the menubar app (runs in background, re-applies HiDPI on reconnect)."
     )
 
-    // Append a line to /tmp/extradisplay.log so e2e tests and humans can verify startup.
+    // Append a line to ~/Library/Logs/acuity.log so e2e tests and humans can verify startup.
     // `open -a` launched apps don't inherit launchd's stdout redirect, so we write explicitly.
     // User-owned log path so root daemon output can never block user writes.
     static let logPath: String = {
         let dir = (NSHomeDirectory() as NSString).appendingPathComponent("Library/Logs")
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-        return (dir as NSString).appendingPathComponent("extradisplay.log")
+        return (dir as NSString).appendingPathComponent("acuity.log")
     }()
 
     private static func log(_ message: String) {
@@ -36,7 +36,7 @@ struct StartCommand: ParsableCommand {
         let controller = StatusMenuController(ddc: ddc)
         let keyInterceptor = BrightnessKeyInterceptor(ddc: ddc)
 
-        // Start display reconfiguration watcher (same functionality as `extradisplay daemon`)
+        // Start display reconfiguration watcher (same functionality as `acuity daemon`)
         let watcher = ReconfigurationWatcher()
         watcher.startWatching()
 

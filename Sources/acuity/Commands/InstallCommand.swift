@@ -4,7 +4,7 @@ import Foundation
 struct InstallCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "install",
-        abstract: "Install the extradisplay LaunchAgent so HiDPI re-applies automatically on login."
+        abstract: "Install the Acuity LaunchAgent so HiDPI re-applies automatically on login."
     )
 
     func run() throws {
@@ -13,12 +13,12 @@ struct InstallCommand: ParsableCommand {
         // write to ~/Library/LaunchAgents and bootstrap the user's launchd domain;
         // neither needs root. Only `sudo acuity enable` requires elevation.
         if getuid() == 0 {
-            fputs("error: do not run 'extradisplay install' with sudo.\n", stderr)
-            fputs("Only 'sudo acuity enable --all' requires root.\n", stderr)
-            fputs("Run: extradisplay install\n", stderr)
+            fputs("error: do not run 'acuity install' with sudo.\n", stderr)
+            fputs("Only 'sudo acuity enable' requires root.\n", stderr)
+            fputs("Run: acuity install\n", stderr)
             throw ExitCode.failure
         }
-        print("Installing extradisplay LaunchAgent...\n")
+        print("Installing Acuity LaunchAgent...\n")
 
         // Step 1: Locate the running binary so the plist references the correct path.
         let executableURL = URL(fileURLWithPath: ProcessInfo.processInfo.arguments[0])
@@ -61,7 +61,7 @@ struct InstallCommand: ParsableCommand {
         // Prefer the app bundle binary (enables NSApplication / menubar via launchd).
         // Fall back to the CLI binary in daemon mode if the bundle isn't installed yet.
         let bundleBinary = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Applications/Acuity.app/Contents/MacOS/extradisplay")
+            .appendingPathComponent("Applications/Acuity.app/Contents/MacOS/acuity")
 
         let (launchPath, launchCommand): (URL, String) = {
             if FileManager.default.fileExists(atPath: bundleBinary.path) {
@@ -85,7 +85,7 @@ struct InstallCommand: ParsableCommand {
 
         print(
             "\n✓ Installation complete."
-            + " extradisplay will automatically apply HiDPI settings on future logins."
+            + " Acuity will automatically apply HiDPI settings on future logins."
         )
     }
 }
@@ -93,7 +93,7 @@ struct InstallCommand: ParsableCommand {
 struct UninstallCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "uninstall",
-        abstract: "Remove the extradisplay LaunchAgent."
+        abstract: "Remove the Acuity LaunchAgent."
     )
 
     @Flag(
@@ -103,7 +103,7 @@ struct UninstallCommand: ParsableCommand {
     var clean: Bool = false
 
     func run() throws {
-        print("Uninstalling extradisplay LaunchAgent...\n")
+        print("Uninstalling Acuity LaunchAgent...\n")
 
         // Step 1: Quit the running menubar app (if any).
         // open -a launched apps aren't managed by launchd directly, so removing

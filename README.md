@@ -1,4 +1,4 @@
-# extradisplay
+# Acuity
 
 Native HiDPI scaling for external monitors on macOS. No SIP. No private entitlements. Open source.
 
@@ -12,7 +12,7 @@ macOS restricts HiDPI ("Retina") scaling to Apple-branded displays. External mon
 
 The fix: write an EDID override plist to `/Library/Displays/Contents/Resources/Overrides/`. macOS reads these at boot to expose additional scaled resolution modes. No SIP disable. No kernel extensions. No private entitlements.
 
-extradisplay automates the override generation, handles display reconnection via a lightweight LaunchAgent daemon, and provides DDC/CI control for brightness, contrast, and input switching.
+Acuity automates the override generation, handles display reconnection via a lightweight LaunchAgent daemon, and provides DDC/CI control for brightness, contrast, and input switching.
 
 ## Quick install
 
@@ -40,17 +40,17 @@ acuity install
 | `acuity enable --display 0xVID:0xPID` | Enable for a specific display |
 | `acuity disable --all` | Remove override plists |
 | `acuity brightness <0-100>` | Set brightness via DDC/CI |
-| `extradisplay contrast <0-100>` | Set contrast via DDC/CI |
-| `extradisplay input <source>` | Switch input (hdmi1, hdmi2, dp1, dp2, usbc) |
+| `acuity contrast <0-100>` | Set contrast via DDC/CI |
+| `acuity input <source>` | Switch input (hdmi1, hdmi2, dp1, dp2, usbc) |
 | `acuity install` | Install the LaunchAgent daemon |
-| `extradisplay uninstall` | Remove the LaunchAgent daemon |
-| `extradisplay uninstall --clean` | Remove daemon and all override plists |
+| `acuity uninstall` | Remove the LaunchAgent daemon |
+| `acuity uninstall --clean` | Remove daemon and all override plists |
 
 ## How it works
 
 macOS exposes HiDPI modes when it finds a matching override plist under `/Library/Displays/Contents/Resources/Overrides/DisplayVendorID-<vid>/DisplayProductID-<pid>`. The plist contains a `scale-resolutions` array of binary-encoded logical resolutions.
 
-extradisplay generates these entries for standard scaled resolutions (2×, 1.5×, and a full ladder), writes them to the correct path, and sets the `DisplayResolutionEnabled` WindowServer default. On reboot, macOS picks up the new modes.
+Acuity generates these entries for standard scaled resolutions (2×, 1.5×, and a full ladder), writes them to the correct path, and sets the `DisplayResolutionEnabled` WindowServer default. On reboot, macOS picks up the new modes.
 
 The daemon (`acuity daemon`) uses `CGDisplayRegisterReconfigurationCallback` to watch for display connection events and re-applies the HiDPI mode automatically when a known display reconnects — useful for docking stations and KVM switches.
 

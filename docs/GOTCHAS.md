@@ -10,16 +10,16 @@ Repo-specific pitfalls, API quirks, and configuration gotchas discovered during 
 **Gotcha:** The specific pitfall and how to avoid/fix it.
 -->
 
-### Running app survives `extradisplay uninstall` — must quit before reinstall
+### Running app survives `acuity uninstall` — must quit before reinstall
 
 **Date:** 2026-03-14
 **Context:** `e2e-test.sh` ran uninstall+install in a loop. `open -a` on reinstall was a no-op because the old app was still running. New binary code never executed.
-**Gotcha:** `extradisplay uninstall` removes the LaunchAgent plist and runs `launchctl bootout`, but the app launched via `open -a` is managed by Launch Services, not launchd. It keeps running. `UninstallCommand` now calls `pkill -f Acuity.app` first. Always verify no running instance before reinstalling.
+**Gotcha:** `acuity uninstall` removes the LaunchAgent plist and runs `launchctl bootout`, but the app launched via `open -a` is managed by Launch Services, not launchd. It keeps running. `UninstallCommand` now calls `pkill -f Acuity.app` first. Always verify no running instance before reinstalling.
 
 ### `ParsableCommand.main(args)` treats every element as a subcommand — drop argv[0] first
 
 **Date:** 2026-03-14
-**Context:** `main.swift` passed `CommandLine.arguments` (which includes `argv[0]` = binary path) to `ExtraDisplay.main(args)`. ArgumentParser errored: "2 unexpected arguments: '/opt/homebrew/bin/extradisplay', 'install'".
+**Context:** `main.swift` passed `CommandLine.arguments` (which includes `argv[0]` = binary path) to `ExtraDisplay.main(args)`. ArgumentParser errored: "2 unexpected arguments: '/opt/homebrew/bin/acuity', 'install'".
 **Gotcha:** `ParsableCommand.main()` (no-arg form) internally drops `argv[0]`. `ParsableCommand.main(_ arguments: [String])` does NOT — it treats every element as a parse argument. Always pass `Array(CommandLine.arguments.dropFirst())` or use the no-arg form.
 
 ### Log file becomes root-owned when daemon first runs as root
