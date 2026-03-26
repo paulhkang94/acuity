@@ -1,4 +1,4 @@
-# extradisplay — Claude Code Guide
+# Acuity — Claude Code Guide
 
 ## LOOP Workflow (Follow This for Every Code Change)
 
@@ -57,7 +57,7 @@ For changes that touch 3+ files or involve architectural decisions:
 ## Project Structure
 
 ```
-Sources/extradisplay/
+Sources/acuity/
   Commands/   — CLI command structs (ArgumentParser); register in ExtraDisplay.swift
   DDC/        — DDCController, IOAVServiceBridge, VCPCode
   Display/    — PlistWriter, ResolutionEncoder, ResolutionPresets, DisplayEnumerator
@@ -65,7 +65,7 @@ Sources/extradisplay/
   Menubar/    — StatusMenuController, BrightnessSliderView, DisplayMenuItem
   HID/        — BrightnessKeyInterceptor
   OSD/        — BezelOverlay
-Tests/extradisplayTests/  — XCTest (19 tests)
+Tests/acuityTests/  — XCTest (19 tests)
 pytests/                  — pytest (9 tests, covers scripts/hidpi.py)
 scripts/                  — install.sh, uninstall.sh, hidpi.py, claude-verify.sh
 mcp/                      — MCP server (server.py + config_example.json)
@@ -85,7 +85,7 @@ LaunchAgent/              — com.acuity.agent.plist
 ## Rules
 - Never edit `.build/` generated files
 - Run `scripts/claude-verify.sh --all` before every commit
-- New CLI commands: add to `Sources/extradisplay/Commands/` and register in `ExtraDisplay.swift`
+- New CLI commands: add to `Sources/acuity/Commands/` and register in `ExtraDisplay.swift`
 - DDC requires physical monitors — abstract behind `protocol DDCControlling`; inject mock in tests
 - `BezelServices` and `IOAVService`: load via `dlopen`/`dlsym` only, never link directly
 - `acuity start` runs NSApplication in `.accessory` mode; call `setsid()` before `NSApplication.shared.run()` to detach from terminal
