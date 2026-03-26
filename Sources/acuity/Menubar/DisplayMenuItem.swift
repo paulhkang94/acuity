@@ -29,16 +29,22 @@ public struct DisplayMenuItem {
         headerItem.isEnabled = false
         items.append(headerItem)
 
-        // Brightness slider row — log DDC availability so failures aren't silent
+        // Probe DDC availability before building the slider.
+        // A failed read means the slider would silently do nothing — show it disabled instead.
         let brightnessResult = Result { try ddc.getBrightness(display: display) }
+        let ddcAvailable: Bool
+        let brightness: Int
         switch brightnessResult {
         case .success(let v):
-            print("PHK DisplayMenuItem: getBrightness=\(v) for display=\(display.displayID) ✓")
+            print("PHK DisplayMenuItem: getBrightness=\(v) for display=\(display.displayID) ✓ DDC available")
+            ddcAvailable = true
+            brightness = v
         case .failure(let e):
-            print("PHK DisplayMenuItem: getBrightness FAILED for display=\(display.displayID) — \(e)")
+            print("PHK DisplayMenuItem: getBrightness FAILED for display=\(display.displayID) — \(e) → slider disabled")
+            ddcAvailable = false
+            brightness = 50
         }
-        let brightness = (try? brightnessResult.get()) ?? 50
-        let sliderView = BrightnessSliderView(ddc: ddc, display: display, currentBrightness: brightness)
+        let sliderView = BrightnessSliderView(ddc: ddc, display: display, currentBrightness: brightness, ddcAvailable: ddcAvailable)
         let brightnessItem = NSMenuItem()
         brightnessItem.view = sliderView
         items.append(brightnessItem)

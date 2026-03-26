@@ -80,17 +80,34 @@ final class IOAVServiceBridge {
 
     // MARK: Init
 
+    // macOS 12–15: IOAVService.framework
+    // macOS 26+:   symbols moved to DisplayTransportServices.framework (and re-exported by
+    //              several others). Try each path in order; first successful load wins.
+    private static let candidateLibPaths: [String] = [
+        "/System/Library/PrivateFrameworks/IOAVService.framework/IOAVService",
+        "/System/Library/PrivateFrameworks/DisplayTransportServices.framework/DisplayTransportServices",
+        "/System/Library/PrivateFrameworks/DSExternalDisplay.framework/DSExternalDisplay",
+        "/System/Library/PrivateFrameworks/HIDDisplay.framework/HIDDisplay",
+        "/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices",
+    ]
+
     init(displayID: CGDirectDisplayID) throws {
         print("PHK IOAVServiceBridge.init: displayID=\(displayID)")
 
-        let libHandle = dlopen(
-            "/System/Library/PrivateFrameworks/IOAVService.framework/IOAVService", RTLD_NOW)
+        // Try framework paths in order — macOS 26 removed IOAVService.framework and
+        // re-exports the same symbols from DisplayTransportServices.framework.
+        var libHandle: UnsafeMutableRawPointer? = nil
+        var loadedPath = "<none>"
+        for path in IOAVServiceBridge.candidateLibPaths {
+            libHandle = dlopen(path, RTLD_NOW)
+            if libHandle != nil { loadedPath = path; break }
+        }
         guard let libHandle else {
             let reason = String(cString: dlerror())
-            print("PHK IOAVServiceBridge.init: dlopen FAILED — \(reason)")
-            throw DDCError.serviceUnavailable("dlopen failed: \(reason)")
+            print("PHK IOAVServiceBridge.init: all dlopen paths FAILED — \(reason)")
+            throw DDCError.serviceUnavailable("dlopen failed on all candidate paths: \(reason)")
         }
-        print("PHK IOAVServiceBridge.init: dlopen OK")
+        print("PHK IOAVServiceBridge.init: dlopen OK via \(loadedPath)")
 
         guard
             let createSym = dlsym(libHandle, "IOAVServiceCreateWithService"),
@@ -201,11 +218,10 @@ final class IOAVServiceBridge {
     // MARK: - Availability
 
     static func isAvailable() -> Bool {
-        guard let h = dlopen(
-            "/System/Library/PrivateFrameworks/IOAVService.framework/IOAVService", RTLD_NOW
-        ) else { return false }
-        dlclose(h)
-        return true
+        for path in candidateLibPaths {
+            if let h = dlopen(path, RTLD_NOW) { dlclose(h); return true }
+        }
+        return false
     }
 
     // MARK: - Service lookup

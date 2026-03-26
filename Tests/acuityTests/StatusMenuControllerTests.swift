@@ -107,7 +107,7 @@ final class StatusMenuControllerTests: XCTestCase {
         // Creating a slider and NOT waiting should result in zero DDC calls.
         let mock = MockDDCController()
         let display = makeDisplay()
-        let view = BrightnessSliderView(ddc: mock, display: display, currentBrightness: 50)
+        let view = BrightnessSliderView(ddc: mock, display: display, currentBrightness: 50, ddcAvailable: true)
         // No programmatic change — should be zero DDC calls
         XCTAssertEqual(mock.brightnessSetCalls.count, 0)
         _ = view

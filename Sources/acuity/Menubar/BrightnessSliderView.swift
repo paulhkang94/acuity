@@ -4,6 +4,9 @@ import Foundation
 /// Custom NSView used as NSMenuItem.view for the brightness row.
 /// Debounces DDC writes so the monitor is only updated after the slider
 /// has been idle for 150 ms.
+///
+/// When DDC is unavailable (e.g. display connected via Thunderbolt dock),
+/// the slider is shown disabled with a tooltip explaining why.
 public final class BrightnessSliderView: NSView {
 
     // MARK: - Subviews
@@ -16,44 +19,53 @@ public final class BrightnessSliderView: NSView {
 
     private let ddc: DDCControlling
     private let display: DisplayInfo
+    private let ddcAvailable: Bool
     private var debounceItem: DispatchWorkItem?
 
     // MARK: - Init
 
-    public init(ddc: DDCControlling, display: DisplayInfo, currentBrightness: Int) {
+    public init(ddc: DDCControlling, display: DisplayInfo, currentBrightness: Int, ddcAvailable: Bool) {
         self.ddc = ddc
         self.display = display
+        self.ddcAvailable = ddcAvailable
 
-        dimLabel = NSTextField(labelWithString: "☀")
+        dimLabel    = NSTextField(labelWithString: "☀")
         brightLabel = NSTextField(labelWithString: "☀")
-        slider = NSSlider()
+        slider      = NSSlider()
 
         super.init(frame: .zero)
 
-        // Dim icon (smaller font)
         dimLabel.font = NSFont.systemFont(ofSize: 11)
-        dimLabel.isEditable = false
-        dimLabel.isBordered = false
-        dimLabel.backgroundColor = .clear
+        dimLabel.isEditable = false; dimLabel.isBordered = false; dimLabel.backgroundColor = .clear
         addSubview(dimLabel)
 
-        // Bright icon (larger font)
         brightLabel.font = NSFont.systemFont(ofSize: 16)
-        brightLabel.isEditable = false
-        brightLabel.isBordered = false
-        brightLabel.backgroundColor = .clear
+        brightLabel.isEditable = false; brightLabel.isBordered = false; brightLabel.backgroundColor = .clear
         addSubview(brightLabel)
 
-        // Slider
         slider.minValue = 0
         slider.maxValue = 100
         slider.intValue = Int32(min(100, max(0, currentBrightness)))
-        slider.target = self
-        slider.action = #selector(sliderChanged(_:))
         slider.controlSize = .small
         addSubview(slider)
 
-        // Layout via Auto Layout
+        if ddcAvailable {
+            slider.target = self
+            slider.action = #selector(sliderChanged(_:))
+        } else {
+            // Disable the slider — dragging would silently do nothing.
+            // Tooltip explains the reason instead of leaving the user confused.
+            slider.isEnabled = false
+            let tooltip = "DDC/CI brightness control is not available for this display. " +
+                          "This typically happens when monitors are connected through a Thunderbolt dock. " +
+                          "Try connecting directly via USB-C or Thunderbolt."
+            slider.toolTip = tooltip
+            dimLabel.toolTip = tooltip
+            brightLabel.toolTip = tooltip
+            dimLabel.alphaValue = 0.4
+            brightLabel.alphaValue = 0.4
+        }
+
         translatesAutoresizingMaskIntoConstraints = false
         dimLabel.translatesAutoresizingMaskIntoConstraints = false
         brightLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -76,9 +88,7 @@ public final class BrightnessSliderView: NSView {
     }
 
     @available(*, unavailable)
-    required init?(coder _: NSCoder) {
-        fatalError("init(coder:) not supported")
-    }
+    required init?(coder _: NSCoder) { fatalError("init(coder:) not supported") }
 
     // MARK: - Slider action
 
@@ -106,11 +116,9 @@ public final class BrightnessSliderView: NSView {
 
     // MARK: - Public
 
-    /// Updates the slider position without triggering a DDC write.
     public func setSliderValue(_ value: Int) {
         slider.intValue = Int32(min(100, max(0, value)))
     }
 
-    /// Current slider integer value.
     public var currentValue: Int { Int(slider.intValue) }
 }
