@@ -36,7 +36,10 @@ acuity install
 | --- | --- |
 | `acuity list` | List connected external displays and HiDPI status |
 | `acuity status` | Show override status for each display |
-| `acuity enable --all` | Write HiDPI override plists for all external displays |
+| `acuity enable --all` | Write HiDPI override plists for all external displays (default: 2× preset) |
+| `acuity enable --all --preset 2x` | 2× scaling (half-native, e.g. 960×540 @2× on 1920×1080) |
+| `acuity enable --all --preset 1.5x` | 1.5× scaling |
+| `acuity enable --all --preset all` | Full resolution ladder |
 | `acuity enable --display 0xVID:0xPID` | Enable for a specific display |
 | `acuity disable --all` | Remove override plists |
 | `acuity brightness <0-100>` | Set brightness via DDC/CI |
@@ -45,6 +48,28 @@ acuity install
 | `acuity install` | Install the LaunchAgent daemon |
 | `acuity uninstall` | Remove the LaunchAgent daemon |
 | `acuity uninstall --clean` | Remove daemon and all override plists |
+
+## Demo
+
+```
+$ acuity list
+
+Connected external displays:
+
+  1. Display 10ac:41da
+     ID         : 0x10AC:0x41DA
+     Native     : 1920×1080
+     Connection : Unknown
+     Status     : HiDPI ✓
+
+$ acuity status
+
+Display 10ac:41da [10ac:41da] — Unknown
+  Resolution:  1920×1080 @ 144Hz
+  HiDPI plist: ✓ installed
+  Current mode: ✓ HiDPI active (960×540 @2× @ 144Hz)
+  DDC/CI:      ✗ not available
+```
 
 ## How it works
 
