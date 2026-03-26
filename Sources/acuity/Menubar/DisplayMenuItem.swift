@@ -29,8 +29,15 @@ public struct DisplayMenuItem {
         headerItem.isEnabled = false
         items.append(headerItem)
 
-        // Brightness slider row
-        let brightness = (try? ddc.getBrightness(display: display)) ?? 50
+        // Brightness slider row — log DDC availability so failures aren't silent
+        let brightnessResult = Result { try ddc.getBrightness(display: display) }
+        switch brightnessResult {
+        case .success(let v):
+            print("PHK DisplayMenuItem: getBrightness=\(v) for display=\(display.displayID) ✓")
+        case .failure(let e):
+            print("PHK DisplayMenuItem: getBrightness FAILED for display=\(display.displayID) — \(e)")
+        }
+        let brightness = (try? brightnessResult.get()) ?? 50
         let sliderView = BrightnessSliderView(ddc: ddc, display: display, currentBrightness: brightness)
         let brightnessItem = NSMenuItem()
         brightnessItem.view = sliderView

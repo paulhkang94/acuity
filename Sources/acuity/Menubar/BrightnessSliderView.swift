@@ -84,17 +84,19 @@ public final class BrightnessSliderView: NSView {
 
     @objc private func sliderChanged(_ sender: NSSlider) {
         let value = Int(sender.intValue)
+        print("PHK BrightnessSliderView.sliderChanged: value=\(value) display=\(display.displayID)")
 
-        // Cancel any pending DDC write
         debounceItem?.cancel()
 
-        // Schedule a new DDC write after 150 ms of slider idle time
         let item = DispatchWorkItem { [weak self] in
             guard let self else { return }
+            print("PHK BrightnessSliderView: firing debounced DDC write value=\(value)")
             do {
                 try self.ddc.setBrightness(value, display: self.display)
+                print("PHK BrightnessSliderView: DDC write succeeded ✓")
                 BezelOverlay.showBrightness(Float(value) / 100.0)
             } catch {
+                print("PHK BrightnessSliderView: DDC write FAILED — \(error)")
                 fputs("[acuity] BrightnessSliderView: DDC error: \(error)\n", stderr)
             }
         }

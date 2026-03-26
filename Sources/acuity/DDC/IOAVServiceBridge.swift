@@ -34,32 +34,34 @@ public enum DDCError: LocalizedError {
 
 // MARK: - Function-pointer typedefs matching IOAVService SPI
 
-private typealias IOAVServiceCreateFn = @convention(c) (CFAllocator?) -> Unmanaged<CFTypeRef>?
+// IOAVServiceCreateWithService(CFAllocatorRef allocator, io_service_t service) -> IOAVServiceRef
+// BUG FIX: previously declared as (CFAllocator?) -> ... missing the io_service_t second parameter.
+// On ARM64 x1 held garbage, so createFn always returned nil → every DDC op threw serviceNotFound.
+private typealias IOAVServiceCreateFn = @convention(c) (CFAllocator?, io_service_t) -> Unmanaged<CFTypeRef>?
+
 private typealias IOAVServiceReadI2CFn = @convention(c) (
-    CFTypeRef,          // service
-    UInt32,             // chipAddress
-    UInt32,             // offset
+    CFTypeRef,               // service
+    UInt32,                  // chipAddress
+    UInt32,                  // offset
     UnsafeMutableRawPointer, // outputBuffer
-    UInt32              // outputBufferSize
+    UInt32                   // outputBufferSize
 ) -> Int32
 
 private typealias IOAVServiceWriteI2CFn = @convention(c) (
-    CFTypeRef,          // service
-    UInt32,             // chipAddress
-    UInt32,             // dataAddress
+    CFTypeRef,               // service
+    UInt32,                  // chipAddress
+    UInt32,                  // dataAddress
     UnsafeMutableRawPointer, // inputBuffer
-    UInt32              // inputBufferSize
+    UInt32                   // inputBufferSize
 ) -> Int32
 
 // MARK: - DDC command constants
 
-private let kDDCAddress: UInt32 = 0x37
 private let kDDCGetVCPFeatureRequest: UInt8 = 0x01
-private let kDDCGetVCPFeatureReply: UInt8 = 0x02
+private let kDDCGetVCPFeatureReply: UInt8   = 0x02
 private let kDDCSetVCPFeatureRequest: UInt8 = 0x03
-private let kDDCI2CSlaveAddress: UInt32 = 0x37
-private let kDDCHostAddress: UInt8 = 0x51
-private let kDDCMonitorAddress: UInt8 = 0x6E
+private let kDDCHostAddress: UInt8          = 0x51
+private let kDDCMonitorAddress: UInt8       = 0x6E
 
 // MARK: - IOAVServiceBridge
 
@@ -67,7 +69,7 @@ private let kDDCMonitorAddress: UInt8 = 0x6E
 /// Uses dlsym-based dynamic loading to avoid requiring a private entitlement at build time.
 ///
 /// Supported: Apple Silicon Macs with monitors connected via DisplayPort, HDMI, or USB-C.
-/// Not supported: Intel Macs (use DDCKit or arm64-only alternative), or displays without DDC/CI.
+/// Not supported: Intel Macs, or displays without DDC/CI.
 final class IOAVServiceBridge {
 
     // MARK: Loaded symbols
@@ -78,46 +80,53 @@ final class IOAVServiceBridge {
 
     // MARK: Init
 
-    /// Initialises the bridge for a specific display, or throws `DDCError` if unavailable.
     init(displayID: CGDirectDisplayID) throws {
-        let handle = dlopen("/System/Library/PrivateFrameworks/IOAVService.framework/IOAVService", RTLD_NOW)
-        guard let handle else {
+        print("PHK IOAVServiceBridge.init: displayID=\(displayID)")
+
+        let libHandle = dlopen(
+            "/System/Library/PrivateFrameworks/IOAVService.framework/IOAVService", RTLD_NOW)
+        guard let libHandle else {
             let reason = String(cString: dlerror())
+            print("PHK IOAVServiceBridge.init: dlopen FAILED — \(reason)")
             throw DDCError.serviceUnavailable("dlopen failed: \(reason)")
         }
+        print("PHK IOAVServiceBridge.init: dlopen OK")
 
         guard
-            let createSym   = dlsym(handle, "IOAVServiceCreateWithService"),
-            let readSym     = dlsym(handle, "IOAVServiceReadI2C"),
-            let writeSym    = dlsym(handle, "IOAVServiceWriteI2C")
+            let createSym = dlsym(libHandle, "IOAVServiceCreateWithService"),
+            let readSym   = dlsym(libHandle, "IOAVServiceReadI2C"),
+            let writeSym  = dlsym(libHandle, "IOAVServiceWriteI2C")
         else {
-            dlclose(handle)
+            dlclose(libHandle)
+            print("PHK IOAVServiceBridge.init: required symbols NOT found")
             throw DDCError.serviceUnavailable("Required symbols not found in IOAVService.framework")
         }
+        print("PHK IOAVServiceBridge.init: symbols resolved OK")
 
         let createFn = unsafeBitCast(createSym, to: IOAVServiceCreateFn.self)
         self.readI2C  = unsafeBitCast(readSym,  to: IOAVServiceReadI2CFn.self)
         self.writeI2C = unsafeBitCast(writeSym, to: IOAVServiceWriteI2CFn.self)
 
-        // Locate the IOAVService instance matching this CGDirectDisplayID
         guard let service = IOAVServiceBridge.findService(for: displayID, createFn: createFn) else {
-            dlclose(handle)
+            dlclose(libHandle)
+            print("PHK IOAVServiceBridge.init: findService returned nil for displayID=\(displayID)")
             throw DDCError.serviceNotFound(displayID)
         }
+        print("PHK IOAVServiceBridge.init: service found ✓")
         self.serviceHandle = service
     }
 
     // MARK: Public API
 
-    /// Reads the current and maximum value for a VCP feature code.
     func readDDC(displayID: CGDirectDisplayID, vcpCode: VCPCode) throws -> (current: Int, max: Int) {
-        // Build the DDC Get VCP Feature request (7 bytes)
+        print("PHK readDDC: displayID=\(displayID) vcp=0x\(String(format: "%02X", vcpCode.rawValue))")
+
         var request: [UInt8] = [
-            kDDCHostAddress,                // source address (host)
-            0x03,                           // message length
-            kDDCGetVCPFeatureRequest,       // command: get VCP feature
-            vcpCode.rawValue,               // VCP opcode
-            0x00,                           // placeholder for checksum
+            kDDCHostAddress,
+            0x03,
+            kDDCGetVCPFeatureRequest,
+            vcpCode.rawValue,
+            0x00,
         ]
         request[4] = ddcChecksum(Array(request[1...]), destinationAddress: kDDCMonitorAddress)
 
@@ -129,14 +138,11 @@ final class IOAVServiceBridge {
             &requestBuffer,
             UInt32(requestBuffer.count)
         )
-        guard writeStatus == 0 else {
-            throw DDCError.writeFailed(vcpCode, writeStatus)
-        }
+        print("PHK readDDC: write request status=\(writeStatus)")
+        guard writeStatus == 0 else { throw DDCError.writeFailed(vcpCode, writeStatus) }
 
-        // Allow monitor time to prepare the reply (~50 ms is standard per MCCS spec)
         usleep(50_000)
 
-        // Read the reply (12 bytes: DDC Get VCP Feature Reply)
         var replyBuffer = [UInt8](repeating: 0, count: 12)
         let readStatus = readI2C(
             serviceHandle,
@@ -145,38 +151,40 @@ final class IOAVServiceBridge {
             &replyBuffer,
             UInt32(replyBuffer.count)
         )
-        guard readStatus == 0 else {
-            throw DDCError.readFailed(vcpCode, readStatus)
-        }
+        print("PHK readDDC: read status=\(readStatus) reply=\(replyBuffer.map { String(format: "%02X", $0) }.joined(separator: " "))")
+        guard readStatus == 0 else { throw DDCError.readFailed(vcpCode, readStatus) }
 
-        // Validate reply structure:
-        // byte 0: destination (0x51), byte 2: opcode (0x02), byte 4: VCP code echo
-        guard replyBuffer.count >= 8,
+        guard replyBuffer.count >= 10,
               replyBuffer[2] == kDDCGetVCPFeatureReply,
-              replyBuffer[4] == vcpCode.rawValue else {
+              replyBuffer[4] == vcpCode.rawValue
+        else {
+            print("PHK readDDC: invalid response structure")
             throw DDCError.invalidResponse
         }
 
         let maxValue = Int(replyBuffer[6]) << 8 | Int(replyBuffer[7])
         let curValue = Int(replyBuffer[8]) << 8 | Int(replyBuffer[9])
+        print("PHK readDDC: current=\(curValue) max=\(maxValue)")
         return (current: curValue, max: maxValue)
     }
 
-    /// Writes a value for a VCP feature code.
     func writeDDC(displayID: CGDirectDisplayID, vcpCode: VCPCode, value: Int) throws {
+        print("PHK writeDDC: displayID=\(displayID) vcp=0x\(String(format: "%02X", vcpCode.rawValue)) value=\(value)")
+
         let valueMSB = UInt8((value >> 8) & 0xFF)
         let valueLSB = UInt8(value & 0xFF)
 
         var request: [UInt8] = [
-            kDDCHostAddress,            // source address
-            0x04,                       // message length
-            kDDCSetVCPFeatureRequest,   // command: set VCP feature
-            vcpCode.rawValue,           // VCP opcode
+            kDDCHostAddress,
+            0x04,
+            kDDCSetVCPFeatureRequest,
+            vcpCode.rawValue,
             valueMSB,
             valueLSB,
-            0x00,                       // placeholder for checksum
+            0x00,
         ]
         request[6] = ddcChecksum(Array(request[1...5]), destinationAddress: kDDCMonitorAddress)
+        print("PHK writeDDC: bytes=\(request.map { String(format: "%02X", $0) }.joined(separator: " "))")
 
         var requestBuffer = request
         let status = writeI2C(
@@ -186,25 +194,27 @@ final class IOAVServiceBridge {
             &requestBuffer,
             UInt32(requestBuffer.count)
         )
-        guard status == 0 else {
-            throw DDCError.writeFailed(vcpCode, status)
-        }
+        print("PHK writeDDC: writeI2C status=\(status) \(status == 0 ? "✓" : "FAILED")")
+        guard status == 0 else { throw DDCError.writeFailed(vcpCode, status) }
     }
 
-    // MARK: - Availability check
+    // MARK: - Availability
 
-    /// Returns true if IOAVService is loadable on this system (Apple Silicon required).
     static func isAvailable() -> Bool {
-        guard let handle = dlopen(
+        guard let h = dlopen(
             "/System/Library/PrivateFrameworks/IOAVService.framework/IOAVService", RTLD_NOW
         ) else { return false }
-        dlclose(handle)
+        dlclose(h)
         return true
     }
 
-    // MARK: - Internals
+    // MARK: - Service lookup
 
-    /// Walks the IOService plane to find the IOAVService for the given display.
+    /// Walks IOAVService entries and returns the one matching this display.
+    ///
+    /// Matching strategy:
+    ///   1. Match by IODisplayUnit == CGDisplayUnitNumber (most reliable when metadata present)
+    ///   2. Fall back to the first service if only one entry exists or unitNumber == 0
     private static func findService(
         for displayID: CGDirectDisplayID,
         createFn: IOAVServiceCreateFn
@@ -212,13 +222,17 @@ final class IOAVServiceBridge {
         let matching = IOServiceMatching("IOAVService")
         var iterator: io_iterator_t = 0
         guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator) == KERN_SUCCESS else {
+            print("PHK findService: IOServiceGetMatchingServices FAILED")
             return nil
         }
         defer { IOObjectRelease(iterator) }
 
-        // On single-display setups the first service is typically the right one.
-        // On multi-display setups we match by display unit number embedded in the service path.
         let unitNumber = CGDisplayUnitNumber(displayID)
+        print("PHK findService: looking for displayID=\(displayID) unitNumber=\(unitNumber)")
+
+        var matchedService: CFTypeRef?
+        var firstService: CFTypeRef?
+        var totalEntries = 0
 
         var entry = IOIteratorNext(iterator)
         while entry != 0 {
@@ -227,28 +241,58 @@ final class IOAVServiceBridge {
                 entry = IOIteratorNext(iterator)
             }
 
-            // Read the "IODisplayUnit" property to match against the CGDisplay unit
             var entryUnit: UInt32 = 0
-            let propKey = "IODisplayUnit" as CFString
-            if let prop = IORegistryEntryCreateCFProperty(entry, propKey, kCFAllocatorDefault, 0)?.takeRetainedValue() {
+            if let prop = IORegistryEntryCreateCFProperty(
+                entry, "IODisplayUnit" as CFString, kCFAllocatorDefault, 0
+            )?.takeRetainedValue() {
                 entryUnit = (prop as? UInt32) ?? 0
             }
 
-            if entryUnit == unitNumber || unitNumber == 0 {
-                if let svc = createFn(kCFAllocatorDefault)?.takeRetainedValue() {
-                    return svc
-                }
+            // Also grab the service location string for logging
+            var locationBuf = [CChar](repeating: 0, count: 256)
+            let locationStr: String
+            if IORegistryEntryGetLocationInPlane(entry, kIOServicePlane, &locationBuf) == KERN_SUCCESS {
+                locationStr = String(cString: locationBuf)
+            } else {
+                locationStr = "<no location>"
             }
+            print("PHK findService: entry[\(totalEntries)] io_service=\(entry) IODisplayUnit=\(entryUnit) location=\(locationStr)")
+
+            // Pass the actual io_service_t entry — this was the bug: previously called with no
+            // second argument, so x1 was garbage and IOAVServiceCreateWithService returned nil.
+            if let svc = createFn(kCFAllocatorDefault, entry)?.takeRetainedValue() {
+                if firstService == nil {
+                    firstService = svc
+                }
+                if entryUnit == unitNumber {
+                    print("PHK findService: unit match at entry[\(totalEntries)] ✓")
+                    matchedService = svc
+                }
+            } else {
+                print("PHK findService: createFn returned nil for entry[\(totalEntries)]")
+            }
+
+            totalEntries += 1
         }
+
+        print("PHK findService: scanned \(totalEntries) IOAVService entries; matched=\(matchedService != nil) firstAvail=\(firstService != nil)")
+
+        if let matched = matchedService { return matched }
+
+        // Fallback: single-display setups or missing IODisplayUnit metadata
+        if totalEntries == 1 || unitNumber == 0 {
+            print("PHK findService: using fallback firstService")
+            return firstService
+        }
+
         return nil
     }
 
-    /// Computes the XOR checksum used in DDC/CI messages.
+    // MARK: - Helpers
+
     private func ddcChecksum(_ bytes: [UInt8], destinationAddress: UInt8) -> UInt8 {
         var checksum = destinationAddress << 1
-        for byte in bytes {
-            checksum ^= byte
-        }
+        for byte in bytes { checksum ^= byte }
         return checksum
     }
 }
