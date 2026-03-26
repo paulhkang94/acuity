@@ -47,3 +47,24 @@ Repo-specific pitfalls, API quirks, and configuration gotchas discovered during 
 **Context:** Acuity v0.1.0 release: `notarytool submit --wait` timed out after 10 minutes even though notarization was still in progress. Apple's notarization queue was slow that day.
 **Gotcha:** `notarytool submit --wait` can take 30-90 minutes when Apple's notarization service is backed up. GitHub Actions default job timeout is 6 hours per job, but the step-level timeout defaults to 360 minutes. However, if you set a lower `timeout-minutes` in the step, `--wait` will be killed mid-submission. Pattern: explicitly set `timeout-minutes: 120` (2 hours) on any step using `notarytool --wait`. Also: always run `notarytool history --latest 1` after submission to verify the job actually completed (if `--wait` times out, the submission may still be in-progress server-side). For releases, consider submitting without `--wait` and polling status in a separate step with exponential backoff.
 **Tags:** acuity, notarization, notarytool, ci, github-actions, timeout, release-pipeline
+
+### macOS 26: IOAVService.framework removed — use DisplayTransportServices.framework
+
+**Date:** 2026-03-26
+**Context:** M4 MacBook Pro (Mac16,7) running macOS 26.3.1. `dlopen("/System/Library/PrivateFrameworks/IOAVService.framework/IOAVService")` fails — not on disk, not in dyld cache. DDC brightness completely broken.
+**Gotcha:** Apple removed `IOAVService.framework` in macOS 26 and moved its symbols (IOAVServiceCreateWithService, IOAVServiceReadI2C, IOAVServiceWriteI2C) to `DisplayTransportServices.framework`. The fix: try multiple candidate paths in order. See `Sources/acuity/DDC/IOAVServiceBridge.swift` `candidateLibPaths` for the full list.
+**Tags:** acuity, ddc, ioavservice, macos26, dlopen, brightness
+
+### IOAVServiceCreateFn typealias missing io_service_t — always returns nil
+
+**Date:** 2026-03-26
+**Context:** Brightness slider showed and accepted input but DDC never worked. `findService()` looped over entries but createFn always returned nil.
+**Gotcha:** `IOAVServiceCreateWithService` takes TWO arguments: `(CFAllocatorRef allocator, io_service_t service)`. The typealias was declared with only one argument — on ARM64, x1 held garbage, the function always returned nil, every operation threw `serviceNotFound`. Fix: `@convention(c) (CFAllocator?, io_service_t) -> Unmanaged<CFTypeRef>?` and pass `entry` as the second argument.
+**Tags:** acuity, ddc, ioavservice, swift, typealias, arm64, calling-convention
+
+### Thunderbolt dock = 0 IOAVService IOKit entries — DDC impossible
+
+**Date:** 2026-03-26
+**Context:** Dell S2721DGF monitors through Intel JHL8440 Thunderbolt 4 dock. `IOServiceMatching("IOAVService")` returned 0 entries. DDC I2C doesn't transit Thunderbolt tunnels.
+**Gotcha:** DDC/CI I2C is embedded in the display's physical connection. TB docks that convert TB→DP do NOT forward this I2C channel. `IODisplayConnect` also = 0 entries. `DisplayServicesCanChangeBrightness()` returns 0. No software path exists for DDC through a TB dock — the signal is lost at the dock hardware. Direct USB-C connection required.
+**Tags:** acuity, ddc, thunderbolt, dock, ioavservice, brightness, hardware-limitation
