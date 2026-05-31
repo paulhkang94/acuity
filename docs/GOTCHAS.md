@@ -68,3 +68,17 @@ Repo-specific pitfalls, API quirks, and configuration gotchas discovered during 
 **Context:** Dell S2721DGF monitors through Intel JHL8440 Thunderbolt 4 dock. `IOServiceMatching("IOAVService")` returned 0 entries. DDC I2C doesn't transit Thunderbolt tunnels.
 **Gotcha:** DDC/CI I2C is embedded in the display's physical connection. TB docks that convert TB→DP do NOT forward this I2C channel. `IODisplayConnect` also = 0 entries. `DisplayServicesCanChangeBrightness()` returns 0. No software path exists for DDC through a TB dock — the signal is lost at the dock hardware. Direct USB-C connection required.
 **Tags:** acuity, ddc, thunderbolt, dock, ioavservice, brightness, hardware-limitation
+
+### CGDisplayBounds returns logical POINTS, not native pixels — use native-flagged modes
+
+**Date:** 2026-05-31
+**Context:** On two Dell S2721DGF (QHD 2560x1440) panels running an active 2x HiDPI mode ("looks like 1920x1080"), `acuity list` reported native = 1920x1080. So `enable --preset all` built the 1080p ladder and never offered the gatekept QHD modes; `--preset 2x` wrote 960x540 instead of 1280x720.
+**Gotcha:** `CGDisplayBounds(displayID)` returns the display rect in LOGICAL POINTS, so on a HiDPI-active display it reports the scaled "looks like" size, not the panel's physical pixels. `CGDisplayPixelsWide/High` is no better (also points on Retina). The current mode's `pixelWidth/Height` reflects whatever mode is active (here 3840x2160, a supersampled "more space" mode) and over-detects. Taking max pixels over ALL modes over-detects too (macOS offers supersampled modes above native, e.g. 5120x2880 / 4096x2304 on this panel). The correct signal: enumerate `CGDisplayCopyAllDisplayModes`, filter to modes with the IOKit native flag (`CGDisplayMode.ioFlags & 0x02000000`, kDisplayModeNativeFlag), and take the max pixel resolution among those. Empirically yields 2560x1440. Fallback when no mode is flagged: max among 1x modes (pixelWidth == width). See `DisplayEnumerator.selectNativeResolution`.
+**Tags:** acuity, display, hidpi, cgdisplaybounds, native-resolution, cgdisplaymode, ioflags, retina
+
+### "Current mode" must come from CGDisplayCopyDisplayMode, not size-matching
+
+**Date:** 2026-05-31
+**Context:** `acuity status` reported "Current mode: HiDPI active (1280x720 @2x)" when the display was actually running 1920x1080 @2x (confirmed via `system_profiler` "UI Looks like").
+**Gotcha:** Don't identify the active mode by scanning `CGDisplayCopyAllDisplayModes` and matching pixel dimensions — multiple modes share the same framebuffer pixels (a 2560-pixel framebuffer is both a 1x 2560x1440 mode AND a 2x "looks like 1280x720" mode), so `.first(where:)` returns an arbitrary one. `CGDisplayCopyDisplayMode(displayID)` returns the genuinely active mode directly. A mode is HiDPI when `pixelWidth > width`; scale = `pixelWidth / width`. See `StatusCommand.describeMode`.
+**Tags:** acuity, display, status, cgdisplaycopydisplaymode, hidpi, current-mode
