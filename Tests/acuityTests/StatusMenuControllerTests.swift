@@ -66,8 +66,19 @@ final class StatusMenuControllerTests: XCTestCase {
         mock.brightnessToReturn = 50
         let display = makeDisplay()
         let items = DisplayMenuItem.items(for: display, ddc: mock, index: 0)
-        // Expected: header + brightness + input + separator = 4
-        XCTAssertEqual(items.count, 4)
+        // Expected: header + brightness + input + resolution + separator = 5
+        XCTAssertEqual(items.count, 5)
+    }
+
+    func test_displayMenuItem_resolutionItem_hasSubmenuWithNativeRow() {
+        let mock = MockDDCController()
+        let display = makeDisplay()
+        let items = DisplayMenuItem.items(for: display, ddc: mock, index: 0)
+        // Resolution submenu sits between the input item and the trailing separator.
+        let resolutionItem = items[3]
+        XCTAssertNotNil(resolutionItem.submenu, "Resolution item must carry a submenu")
+        // The native row is always present regardless of live display modes.
+        XCTAssertGreaterThanOrEqual(resolutionItem.submenu?.numberOfItems ?? 0, 1)
     }
 
     func test_displayMenuItem_header_isNotEnabled() {

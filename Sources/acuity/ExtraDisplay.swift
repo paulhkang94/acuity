@@ -12,6 +12,7 @@ struct ExtraDisplay: ParsableCommand {
             StatusCommand.self,
             EnableCommand.self,
             DisableCommand.self,
+            SetResolutionCommand.self,
             BrightnessCommand.self,
             ContrastCommand.self,
             InputCommand.self,

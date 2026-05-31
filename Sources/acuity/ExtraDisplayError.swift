@@ -11,6 +11,8 @@ enum ExtraDisplayError: LocalizedError {
     case windowServerDefaultsFailed(Int32)
     case ddcNotSupported
     case ddcError(String)
+    case resolutionNotAvailable(String)
+    case setResolutionFailed(String, Int32)
 
     var errorDescription: String? {
         switch self {
@@ -32,6 +34,10 @@ enum ExtraDisplayError: LocalizedError {
             return "DDC/CI is not supported on this display or connection type."
         case .ddcError(let reason):
             return "DDC error: \(reason)"
+        case .resolutionNotAvailable(let detail):
+            return "No usable HiDPI mode for \(detail). Run 'acuity set-resolution --list' to see available sizes."
+        case .setResolutionFailed(let detail, let code):
+            return "Failed to set resolution for \(detail) (CGError \(code))."
         }
     }
 }
