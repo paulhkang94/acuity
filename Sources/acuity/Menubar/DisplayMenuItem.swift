@@ -36,11 +36,11 @@ public struct DisplayMenuItem {
         let brightness: Int
         switch brightnessResult {
         case .success(let v):
-            print("PHK DisplayMenuItem: getBrightness=\(v) for display=\(display.displayID) ✓ DDC available")
+            acuityDebugLog("DisplayMenuItem: getBrightness=\(v) for display=\(display.displayID) ✓ DDC available")
             ddcAvailable = true
             brightness = v
         case .failure(let e):
-            print("PHK DisplayMenuItem: getBrightness FAILED for display=\(display.displayID) — \(e) → slider disabled")
+            acuityDebugLog("DisplayMenuItem: getBrightness FAILED for display=\(display.displayID) — \(e) → slider disabled")
             ddcAvailable = false
             brightness = 50
         }

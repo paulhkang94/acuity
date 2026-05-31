@@ -92,7 +92,7 @@ final class IOAVServiceBridge {
     ]
 
     init(displayID: CGDirectDisplayID) throws {
-        print("PHK IOAVServiceBridge.init: displayID=\(displayID)")
+        acuityDebugLog("IOAVServiceBridge.init: displayID=\(displayID)")
 
         // Try framework paths in order — macOS 26 removed IOAVService.framework and
         // re-exports the same symbols from DisplayTransportServices.framework.
@@ -104,10 +104,10 @@ final class IOAVServiceBridge {
         }
         guard let libHandle else {
             let reason = String(cString: dlerror())
-            print("PHK IOAVServiceBridge.init: all dlopen paths FAILED — \(reason)")
+            acuityDebugLog("IOAVServiceBridge.init: all dlopen paths FAILED — \(reason)")
             throw DDCError.serviceUnavailable("dlopen failed on all candidate paths: \(reason)")
         }
-        print("PHK IOAVServiceBridge.init: dlopen OK via \(loadedPath)")
+        acuityDebugLog("IOAVServiceBridge.init: dlopen OK via \(loadedPath)")
 
         guard
             let createSym = dlsym(libHandle, "IOAVServiceCreateWithService"),
@@ -115,10 +115,10 @@ final class IOAVServiceBridge {
             let writeSym  = dlsym(libHandle, "IOAVServiceWriteI2C")
         else {
             dlclose(libHandle)
-            print("PHK IOAVServiceBridge.init: required symbols NOT found")
+            acuityDebugLog("IOAVServiceBridge.init: required symbols NOT found")
             throw DDCError.serviceUnavailable("Required symbols not found in IOAVService.framework")
         }
-        print("PHK IOAVServiceBridge.init: symbols resolved OK")
+        acuityDebugLog("IOAVServiceBridge.init: symbols resolved OK")
 
         let createFn = unsafeBitCast(createSym, to: IOAVServiceCreateFn.self)
         self.readI2C  = unsafeBitCast(readSym,  to: IOAVServiceReadI2CFn.self)
@@ -126,17 +126,17 @@ final class IOAVServiceBridge {
 
         guard let service = IOAVServiceBridge.findService(for: displayID, createFn: createFn) else {
             dlclose(libHandle)
-            print("PHK IOAVServiceBridge.init: findService returned nil for displayID=\(displayID)")
+            acuityDebugLog("IOAVServiceBridge.init: findService returned nil for displayID=\(displayID)")
             throw DDCError.serviceNotFound(displayID)
         }
-        print("PHK IOAVServiceBridge.init: service found ✓")
+        acuityDebugLog("IOAVServiceBridge.init: service found ✓")
         self.serviceHandle = service
     }
 
     // MARK: Public API
 
     func readDDC(displayID: CGDirectDisplayID, vcpCode: VCPCode) throws -> (current: Int, max: Int) {
-        print("PHK readDDC: displayID=\(displayID) vcp=0x\(String(format: "%02X", vcpCode.rawValue))")
+        acuityDebugLog("readDDC: displayID=\(displayID) vcp=0x\(String(format: "%02X", vcpCode.rawValue))")
 
         var request: [UInt8] = [
             kDDCHostAddress,
@@ -155,7 +155,7 @@ final class IOAVServiceBridge {
             &requestBuffer,
             UInt32(requestBuffer.count)
         )
-        print("PHK readDDC: write request status=\(writeStatus)")
+        acuityDebugLog("readDDC: write request status=\(writeStatus)")
         guard writeStatus == 0 else { throw DDCError.writeFailed(vcpCode, writeStatus) }
 
         usleep(50_000)
@@ -168,25 +168,25 @@ final class IOAVServiceBridge {
             &replyBuffer,
             UInt32(replyBuffer.count)
         )
-        print("PHK readDDC: read status=\(readStatus) reply=\(replyBuffer.map { String(format: "%02X", $0) }.joined(separator: " "))")
+        acuityDebugLog("readDDC: read status=\(readStatus) reply=\(replyBuffer.map { String(format: "%02X", $0) }.joined(separator: " "))")
         guard readStatus == 0 else { throw DDCError.readFailed(vcpCode, readStatus) }
 
         guard replyBuffer.count >= 10,
               replyBuffer[2] == kDDCGetVCPFeatureReply,
               replyBuffer[4] == vcpCode.rawValue
         else {
-            print("PHK readDDC: invalid response structure")
+            acuityDebugLog("readDDC: invalid response structure")
             throw DDCError.invalidResponse
         }
 
         let maxValue = Int(replyBuffer[6]) << 8 | Int(replyBuffer[7])
         let curValue = Int(replyBuffer[8]) << 8 | Int(replyBuffer[9])
-        print("PHK readDDC: current=\(curValue) max=\(maxValue)")
+        acuityDebugLog("readDDC: current=\(curValue) max=\(maxValue)")
         return (current: curValue, max: maxValue)
     }
 
     func writeDDC(displayID: CGDirectDisplayID, vcpCode: VCPCode, value: Int) throws {
-        print("PHK writeDDC: displayID=\(displayID) vcp=0x\(String(format: "%02X", vcpCode.rawValue)) value=\(value)")
+        acuityDebugLog("writeDDC: displayID=\(displayID) vcp=0x\(String(format: "%02X", vcpCode.rawValue)) value=\(value)")
 
         let valueMSB = UInt8((value >> 8) & 0xFF)
         let valueLSB = UInt8(value & 0xFF)
@@ -201,7 +201,7 @@ final class IOAVServiceBridge {
             0x00,
         ]
         request[6] = ddcChecksum(Array(request[1...5]), destinationAddress: kDDCMonitorAddress)
-        print("PHK writeDDC: bytes=\(request.map { String(format: "%02X", $0) }.joined(separator: " "))")
+        acuityDebugLog("writeDDC: bytes=\(request.map { String(format: "%02X", $0) }.joined(separator: " "))")
 
         var requestBuffer = request
         let status = writeI2C(
@@ -211,7 +211,7 @@ final class IOAVServiceBridge {
             &requestBuffer,
             UInt32(requestBuffer.count)
         )
-        print("PHK writeDDC: writeI2C status=\(status) \(status == 0 ? "✓" : "FAILED")")
+        acuityDebugLog("writeDDC: writeI2C status=\(status) \(status == 0 ? "✓" : "FAILED")")
         guard status == 0 else { throw DDCError.writeFailed(vcpCode, status) }
     }
 
@@ -238,13 +238,13 @@ final class IOAVServiceBridge {
         let matching = IOServiceMatching("IOAVService")
         var iterator: io_iterator_t = 0
         guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator) == KERN_SUCCESS else {
-            print("PHK findService: IOServiceGetMatchingServices FAILED")
+            acuityDebugLog("findService: IOServiceGetMatchingServices FAILED")
             return nil
         }
         defer { IOObjectRelease(iterator) }
 
         let unitNumber = CGDisplayUnitNumber(displayID)
-        print("PHK findService: looking for displayID=\(displayID) unitNumber=\(unitNumber)")
+        acuityDebugLog("findService: looking for displayID=\(displayID) unitNumber=\(unitNumber)")
 
         var matchedService: CFTypeRef?
         var firstService: CFTypeRef?
@@ -272,7 +272,7 @@ final class IOAVServiceBridge {
             } else {
                 locationStr = "<no location>"
             }
-            print("PHK findService: entry[\(totalEntries)] io_service=\(entry) IODisplayUnit=\(entryUnit) location=\(locationStr)")
+            acuityDebugLog("findService: entry[\(totalEntries)] io_service=\(entry) IODisplayUnit=\(entryUnit) location=\(locationStr)")
 
             // Pass the actual io_service_t entry — this was the bug: previously called with no
             // second argument, so x1 was garbage and IOAVServiceCreateWithService returned nil.
@@ -281,23 +281,23 @@ final class IOAVServiceBridge {
                     firstService = svc
                 }
                 if entryUnit == unitNumber {
-                    print("PHK findService: unit match at entry[\(totalEntries)] ✓")
+                    acuityDebugLog("findService: unit match at entry[\(totalEntries)] ✓")
                     matchedService = svc
                 }
             } else {
-                print("PHK findService: createFn returned nil for entry[\(totalEntries)]")
+                acuityDebugLog("findService: createFn returned nil for entry[\(totalEntries)]")
             }
 
             totalEntries += 1
         }
 
-        print("PHK findService: scanned \(totalEntries) IOAVService entries; matched=\(matchedService != nil) firstAvail=\(firstService != nil)")
+        acuityDebugLog("findService: scanned \(totalEntries) IOAVService entries; matched=\(matchedService != nil) firstAvail=\(firstService != nil)")
 
         if let matched = matchedService { return matched }
 
         // Fallback: single-display setups or missing IODisplayUnit metadata
         if totalEntries == 1 || unitNumber == 0 {
-            print("PHK findService: using fallback firstService")
+            acuityDebugLog("findService: using fallback firstService")
             return firstService
         }
 

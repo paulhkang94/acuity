@@ -55,41 +55,45 @@ struct StatusCommand: ParsableCommand {
 
     /// Returns a human-readable mode description and the refresh rate in Hz (if readable).
     ///
-    /// Queries `CGDisplayCopyAllDisplayModes` with `kCGDisplayShowDuplicateLowResolutionModes`
-    /// so that HiDPI (scaled) modes appear alongside standard modes. The active mode is matched
-    /// against the current display bounds to determine if HiDPI is in use.
+    /// Reads the genuinely active mode via `CGDisplayCopyDisplayMode` rather than
+    /// scanning all modes and guessing — multiple modes share the same pixel
+    /// dimensions (a 2560-pixel framebuffer is both a 1× 2560×1440 mode and a 2×
+    /// "looks like 1280×720" mode), so matching by size picked an arbitrary one.
     private func currentModeDescription(_ display: DisplayInfo) -> (description: String, hz: Int?) {
-        let options: CFDictionary = [
-            kCGDisplayShowDuplicateLowResolutionModes as String: true as CFBoolean,
-        ] as CFDictionary
-
-        guard
-            let modes = CGDisplayCopyAllDisplayModes(display.displayID, options) as? [CGDisplayMode],
-            let activeMode = modes.first(where: { $0.isUsableForDesktopGUI() && isCurrentMode($0, display: display) })
-        else {
+        guard let activeMode = CGDisplayCopyDisplayMode(display.displayID) else {
             return ("unknown", nil)
         }
 
         let hz = Int(activeMode.refreshRate.rounded())
-        let refreshStr = hz > 0 ? " @ \(hz)Hz" : ""
-
-        // A mode is HiDPI when its pixel dimensions exceed its point dimensions
-        let isHiDPI = activeMode.pixelWidth > activeMode.width || activeMode.pixelHeight > activeMode.height
-        if isHiDPI {
-            let logicalW = activeMode.width
-            let logicalH = activeMode.height
-            let scale = activeMode.pixelWidth / activeMode.width
-            let modeDesc = "✓ HiDPI active (\(logicalW)×\(logicalH) @\(scale)×\(refreshStr))"
-            return (modeDesc, hz > 0 ? hz : nil)
-        } else {
-            let modeDesc = "✗ Standard (\(activeMode.width)×\(activeMode.height)\(refreshStr))"
-            return (modeDesc, hz > 0 ? hz : nil)
-        }
+        let desc = StatusCommand.describeMode(
+            pointWidth: activeMode.width,
+            pointHeight: activeMode.height,
+            pixelWidth: activeMode.pixelWidth,
+            pixelHeight: activeMode.pixelHeight,
+            hz: hz > 0 ? hz : nil
+        )
+        return (desc, hz > 0 ? hz : nil)
     }
 
-    /// Returns true when the given mode matches the display's current pixel dimensions.
-    private func isCurrentMode(_ mode: CGDisplayMode, display: DisplayInfo) -> Bool {
-        mode.pixelWidth == display.nativeWidth && mode.pixelHeight == display.nativeHeight
+    /// Pure, testable formatter for the current-mode line.
+    ///
+    /// A mode is HiDPI when its framebuffer (pixels) exceeds its logical size
+    /// (points); the scale factor is pixels ÷ points.
+    static func describeMode(
+        pointWidth: Int,
+        pointHeight: Int,
+        pixelWidth: Int,
+        pixelHeight: Int,
+        hz: Int?
+    ) -> String {
+        let refreshStr = hz.map { " @ \($0)Hz" } ?? ""
+        let isHiDPI = pixelWidth > pointWidth || pixelHeight > pointHeight
+        if isHiDPI {
+            let scale = pointWidth > 0 ? pixelWidth / pointWidth : 1
+            return "✓ HiDPI active (\(pointWidth)×\(pointHeight) @\(scale)×\(refreshStr))"
+        } else {
+            return "✗ Standard (\(pointWidth)×\(pointHeight)\(refreshStr))"
+        }
     }
 
     // MARK: - DDC probe

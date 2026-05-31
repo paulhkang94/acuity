@@ -3,6 +3,23 @@ import Foundation
 import IOKit
 import IOKit.hid
 
+// MARK: - DisplayModeDescriptor
+
+/// A CoreGraphics-free snapshot of a display mode's dimensions and flags.
+///
+/// Keeps `selectNativeResolution` pure and testable against captured hardware
+/// data instead of requiring a live `CGDisplayMode`.
+struct DisplayModeDescriptor {
+    /// Physical framebuffer width in pixels.
+    let pixelWidth: Int
+    /// Physical framebuffer height in pixels.
+    let pixelHeight: Int
+    /// Logical width in points (`CGDisplayMode.width`).
+    let pointWidth: Int
+    /// IOKit mode flags (`CGDisplayMode.ioFlags`).
+    let ioFlags: UInt32
+}
+
 // MARK: - DisplayEnumerator
 
 /// Enumerates connected displays using CGDisplay and IOKit.
@@ -29,9 +46,7 @@ public struct DisplayEnumerator {
 
     private static func displayInfo(for displayID: CGDirectDisplayID) -> DisplayInfo {
         let isBuiltIn = CGDisplayIsBuiltin(displayID) != 0
-        let bounds = CGDisplayBounds(displayID)
-        let nativeWidth = Int(bounds.width)
-        let nativeHeight = Int(bounds.height)
+        let (nativeWidth, nativeHeight) = nativeResolution(for: displayID)
 
         if let ioInfo = ioKitInfo(for: displayID) {
             return DisplayInfo(
@@ -59,6 +74,71 @@ public struct DisplayEnumerator {
             isBuiltIn: isBuiltIn,
             connectionType: .unknown
         )
+    }
+
+    // MARK: - Native resolution detection
+
+    /// IOKit native-timing flag (`kDisplayModeNativeFlag` from IOGraphicsTypes.h).
+    /// Not surfaced in the CoreGraphics headers, so declared here. Empirically
+    /// validated against connected hardware: filtering modes by this bit yields
+    /// exactly the panel's physical timings.
+    static let nativeModeFlag: UInt32 = 0x0200_0000
+
+    /// Resolves the panel's true native pixel resolution for a display.
+    ///
+    /// `CGDisplayBounds` reports logical *points*, so on a HiDPI-active display
+    /// it returns the scaled "looks like" size (e.g. 1920×1080 on a 2560×1440
+    /// panel running a 2× mode) — not the panel's physical resolution. This
+    /// enumerates the real display modes and selects the native one.
+    private static func nativeResolution(for displayID: CGDirectDisplayID) -> (Int, Int) {
+        let options = [kCGDisplayShowDuplicateLowResolutionModes as String: true] as CFDictionary
+        if let modes = CGDisplayCopyAllDisplayModes(displayID, options) as? [CGDisplayMode] {
+            let descriptors = modes.map {
+                DisplayModeDescriptor(
+                    pixelWidth: $0.pixelWidth,
+                    pixelHeight: $0.pixelHeight,
+                    pointWidth: $0.width,
+                    ioFlags: $0.ioFlags
+                )
+            }
+            if let native = selectNativeResolution(from: descriptors) {
+                return native
+            }
+        }
+
+        // Fallbacks: current mode's pixel size, then logical bounds (points).
+        if let current = CGDisplayCopyDisplayMode(displayID) {
+            return (current.pixelWidth, current.pixelHeight)
+        }
+        let bounds = CGDisplayBounds(displayID)
+        return (Int(bounds.width), Int(bounds.height))
+    }
+
+    /// Pure selection logic, separated from CoreGraphics so it can be tested
+    /// against captured hardware mode sets.
+    ///
+    /// Strategy:
+    ///   1. Prefer the largest pixel resolution among native-flagged modes —
+    ///      these are the panel's physical timings and exclude HiDPI
+    ///      "more space" modes whose framebuffer is supersampled above native.
+    ///   2. Fall back to the largest 1× mode (`pixelWidth == pointWidth`, i.e.
+    ///      no supersampling) when no mode carries the native flag.
+    static func selectNativeResolution(from modes: [DisplayModeDescriptor]) -> (width: Int, height: Int)? {
+        let area: (DisplayModeDescriptor, DisplayModeDescriptor) -> Bool = {
+            $0.pixelWidth * $0.pixelHeight < $1.pixelWidth * $1.pixelHeight
+        }
+
+        let nativeFlagged = modes.filter { $0.ioFlags & nativeModeFlag != 0 }
+        if let best = nativeFlagged.max(by: area) {
+            return (best.pixelWidth, best.pixelHeight)
+        }
+
+        let oneX = modes.filter { $0.pixelWidth == $0.pointWidth }
+        if let best = oneX.max(by: area) {
+            return (best.pixelWidth, best.pixelHeight)
+        }
+
+        return nil
     }
 
     // MARK: - IOKit lookup
