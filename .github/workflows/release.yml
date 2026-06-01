@@ -186,6 +186,15 @@ jobs:
           echo "$NOTES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+      - name: Mint GitHub App token (so the release event cascades to tap-update.yml)
+        # Minted here, late in the job, because the token lives 1 hour and notarization
+        # above can take 30-90 min. Defaults to the current repo (acuity).
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -205,8 +214,9 @@ jobs:
           draft: false
           prerelease: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
-      # Homebrew tap update is handled by tap-update.yml, triggered automatically
-      # by the GitHub "release: published" event above. No tap steps needed here.
+      # Homebrew tap update is handled by tap-update.yml. The release above is created
+      # with the GitHub App token (not GITHUB_TOKEN), so its "release: published" event
+      # cascades and triggers tap-update.yml automatically.
       # To manually re-run: gh workflow run tap-update.yml --field tag_name=vX.Y.Z
