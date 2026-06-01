@@ -38,21 +38,3 @@ tools:
       required:
         - display_id
 
-  - name: set_brightness
-    description: >
-      Set display brightness via DDC/CI for a connected external monitor.
-      Value range is 0-100. Requires a DDC-capable display and connection.
-    inputSchema:
-      type: object
-      properties:
-        display_id:
-          type: string
-          description: Display identifier (from list_displays)
-        brightness:
-          type: integer
-          description: Brightness level 0-100
-          minimum: 0
-          maximum: 100
-      required:
-        - display_id
-        - brightness

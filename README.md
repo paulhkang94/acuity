@@ -1,6 +1,6 @@
 # Acuity
 
-> **Active.** Acuity provides persistent supersampled HiDPI for standard-density QHD external monitors. This is the use case BetterDisplay's free tier also covers, but BetterDisplay does not persist the chosen mode across reboot without keeping the app resident. Acuity remembers your chosen "looks like" size per display and re-applies it on reconnect and at login via a small LaunchAgent.
+> **Active.** Acuity provides supersampled HiDPI for standard-density QHD external monitors. It remembers your chosen "looks like" size per display and re-applies it on reconnect and at login via a small open-source LaunchAgent - no SIP disable, no private entitlements. The daemon is a plain plist you can inspect, edit, or remove.
 
 Native HiDPI scaling for external monitors on macOS. No SIP. No private entitlements. Open source.
 

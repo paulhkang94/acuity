@@ -60,33 +60,6 @@ TOOLS = [
         "description": "Show detailed HiDPI status for all external displays, including current resolution and override contents.",
         "inputSchema": {"type": "object", "properties": {}},
     },
-    {
-        "name": "set_brightness",
-        "description": "Set display brightness via DDC/CI (Apple Silicon only).",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "value": {"type": "integer", "minimum": 0, "maximum": 100},
-                "display": {
-                    "type": "string",
-                    "description": "Display ID as 0xVID:0xPID. Omit for first external display.",
-                },
-            },
-            "required": ["value"],
-        },
-    },
-    {
-        "name": "set_contrast",
-        "description": "Set display contrast via DDC/CI (Apple Silicon only).",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "value": {"type": "integer", "minimum": 0, "maximum": 100},
-                "display": {"type": "string"},
-            },
-            "required": ["value"],
-        },
-    },
 ]
 
 
@@ -155,33 +128,11 @@ def tool_get_status(_args: dict) -> str:
     )
 
 
-def tool_set_brightness(args: dict) -> str:
-    cli = find_cli()
-    value = str(args["value"])
-    cmd = [cli, "brightness", value]
-    display = args.get("display")
-    if display:
-        cmd += ["--display", display]
-    return json.dumps(run(cmd))
-
-
-def tool_set_contrast(args: dict) -> str:
-    cli = find_cli()
-    value = str(args["value"])
-    cmd = [cli, "contrast", value]
-    display = args.get("display")
-    if display:
-        cmd += ["--display", display]
-    return json.dumps(run(cmd))
-
-
 TOOL_HANDLERS = {
     "list_displays": tool_list_displays,
     "enable_hidpi": tool_enable_hidpi,
     "disable_hidpi": tool_disable_hidpi,
     "get_status": tool_get_status,
-    "set_brightness": tool_set_brightness,
-    "set_contrast": tool_set_contrast,
 }
 
 
@@ -208,7 +159,7 @@ def handle_request(request: dict):
             {
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "acuity", "version": "0.1.0"},
+                "serverInfo": {"name": "acuity", "version": "0.2.0"},
             },
         )
 
