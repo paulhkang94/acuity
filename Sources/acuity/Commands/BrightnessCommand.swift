@@ -18,7 +18,7 @@ struct BrightnessCommand: ParsableCommand {
 
     func run() throws {
         guard (0...100).contains(value) else {
-            throw ExtraDisplayError.ddcError("Brightness value \(value) is out of range 0–100.")
+            throw AcuityError.ddcError("Brightness value \(value) is out of range 0–100.")
         }
 
         let info = try resolveTargetDisplay(display)

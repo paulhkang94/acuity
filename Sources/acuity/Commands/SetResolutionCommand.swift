@@ -30,7 +30,7 @@ struct SetResolutionCommand: ParsableCommand {
         let targets: [DisplayInfo]
         if all {
             targets = DisplayEnumerator.allDisplays().filter { $0.isExternal }
-            guard !targets.isEmpty else { throw ExtraDisplayError.noExternalDisplays }
+            guard !targets.isEmpty else { throw AcuityError.noExternalDisplays }
         } else {
             targets = [try resolveTargetDisplay(display)]
         }
@@ -41,7 +41,7 @@ struct SetResolutionCommand: ParsableCommand {
         }
 
         guard let width, let height else {
-            throw ExtraDisplayError.invalidDisplayArgument("set-resolution needs --width and --height (or --list)")
+            throw AcuityError.invalidDisplayArgument("set-resolution needs --width and --height (or --list)")
         }
 
         // Remember each choice so the daemon re-applies THIS size on reboot /

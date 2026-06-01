@@ -34,7 +34,7 @@ struct EnableCommand: ParsableCommand {
         case "1.5x": scalingPreset = .onePointFiveX
         case "all":  scalingPreset = .all
         default:
-            throw ExtraDisplayError.invalidPreset(preset, valid: ["2x", "1.5x", "all"])
+            throw AcuityError.invalidPreset(preset, valid: ["2x", "1.5x", "all"])
         }
 
         let allDisplays = DisplayEnumerator.allDisplays().filter { $0.isExternal }
@@ -50,7 +50,7 @@ struct EnableCommand: ParsableCommand {
             guard let match = allDisplays.first(where: {
                 $0.vendorID == parsed.vendorID && $0.productID == parsed.productID
             }) else {
-                throw ExtraDisplayError.displayNotFound(displayArg)
+                throw AcuityError.displayNotFound(displayArg)
             }
             targets = [match]
         } else {
@@ -95,7 +95,7 @@ struct EnableCommand: ParsableCommand {
 
     private func requireRoot() throws {
         guard geteuid() == 0 else {
-            throw ExtraDisplayError.notRoot
+            throw AcuityError.notRoot
         }
     }
 
@@ -104,7 +104,7 @@ struct EnableCommand: ParsableCommand {
         guard parts.count == 2,
               let vendor = UInt32(parts[0].trimmingCharacters(in: .whitespaces), radix: 16),
               let product = UInt32(parts[1].trimmingCharacters(in: .whitespaces), radix: 16) else {
-            throw ExtraDisplayError.invalidDisplayArgument(arg)
+            throw AcuityError.invalidDisplayArgument(arg)
         }
         return (vendor, product)
     }
@@ -125,7 +125,7 @@ struct EnableCommand: ParsableCommand {
         try task.run()
         task.waitUntilExit()
         guard task.terminationStatus == 0 else {
-            throw ExtraDisplayError.windowServerDefaultsFailed(task.terminationStatus)
+            throw AcuityError.windowServerDefaultsFailed(task.terminationStatus)
         }
     }
 }

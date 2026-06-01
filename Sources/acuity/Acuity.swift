@@ -2,7 +2,7 @@ import ArgumentParser
 import Foundation
 
 
-struct ExtraDisplay: ParsableCommand {
+struct Acuity: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "acuity",
         abstract: "Enable HiDPI scaling on external monitors without SIP or private entitlements.",

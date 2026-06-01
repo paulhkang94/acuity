@@ -35,7 +35,7 @@ struct DisableCommand: ParsableCommand {
             guard let match = allDisplays.first(where: {
                 $0.vendorID == parsed.vendorID && $0.productID == parsed.productID
             }) else {
-                throw ExtraDisplayError.displayNotFound(displayArg)
+                throw AcuityError.displayNotFound(displayArg)
             }
             targets = [match]
         } else {
@@ -78,7 +78,7 @@ struct DisableCommand: ParsableCommand {
 
     private func requireRoot() throws {
         guard geteuid() == 0 else {
-            throw ExtraDisplayError.notRoot
+            throw AcuityError.notRoot
         }
     }
 
@@ -87,7 +87,7 @@ struct DisableCommand: ParsableCommand {
         guard parts.count == 2,
               let vendor = UInt32(parts[0].trimmingCharacters(in: .whitespaces), radix: 16),
               let product = UInt32(parts[1].trimmingCharacters(in: .whitespaces), radix: 16) else {
-            throw ExtraDisplayError.invalidDisplayArgument(arg)
+            throw AcuityError.invalidDisplayArgument(arg)
         }
         return (vendor, product)
     }

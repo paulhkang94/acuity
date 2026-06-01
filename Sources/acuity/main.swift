@@ -10,4 +10,4 @@ var parseArgs = Array(CommandLine.arguments.dropFirst())
 if parseArgs.isEmpty, Bundle.main.bundlePath.hasSuffix(".app") {
     parseArgs = ["start"]
 }
-ExtraDisplay.main(parseArgs)
+Acuity.main(parseArgs)

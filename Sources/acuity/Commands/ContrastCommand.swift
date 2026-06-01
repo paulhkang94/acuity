@@ -18,7 +18,7 @@ struct ContrastCommand: ParsableCommand {
 
     func run() throws {
         guard (0...100).contains(value) else {
-            throw ExtraDisplayError.ddcError("Contrast value \(value) is out of range 0–100.")
+            throw AcuityError.ddcError("Contrast value \(value) is out of range 0–100.")
         }
 
         let info = try resolveTargetDisplay(display)

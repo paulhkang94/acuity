@@ -10,7 +10,7 @@ struct DaemonCommand: ParsableCommand {
     )
 
     func run() throws {
-        let version = ExtraDisplay.configuration.version
+        let version = Acuity.configuration.version
         fputs("[acuity] daemon starting — version \(version)\n", stderr)
 
         let watcher = ReconfigurationWatcher(selectionStore: .standard())

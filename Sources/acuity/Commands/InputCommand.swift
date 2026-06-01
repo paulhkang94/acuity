@@ -32,7 +32,7 @@ struct InputCommand: ParsableCommand {
         let lower = source.lowercased()
         guard let inputSource = Self.sourceMap[lower] else {
             let valid = Self.sourceMap.keys.sorted().joined(separator: ", ")
-            throw ExtraDisplayError.ddcError(
+            throw AcuityError.ddcError(
                 "Unknown input source '\(source)'. Valid options: \(valid)."
             )
         }

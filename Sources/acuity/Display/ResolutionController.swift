@@ -145,22 +145,22 @@ enum ResolutionController {
         guard let index = selectModeIndex(
             targetWidth: width, targetHeight: height, preferHiDPI: preferHiDPI, from: candidates
         ) else {
-            throw ExtraDisplayError.resolutionNotAvailable("\(width)×\(height) on \(displayName)")
+            throw AcuityError.resolutionNotAvailable("\(width)×\(height) on \(displayName)")
         }
         let mode = modes[index]
 
         var config: CGDisplayConfigRef?
         guard CGBeginDisplayConfiguration(&config) == .success else {
-            throw ExtraDisplayError.setResolutionFailed(displayName, -1)
+            throw AcuityError.setResolutionFailed(displayName, -1)
         }
         let configErr = CGConfigureDisplayWithDisplayMode(config, displayID, mode, nil)
         guard configErr == .success else {
             CGCancelDisplayConfiguration(config)
-            throw ExtraDisplayError.setResolutionFailed(displayName, configErr.rawValue)
+            throw AcuityError.setResolutionFailed(displayName, configErr.rawValue)
         }
         let completeErr = CGCompleteDisplayConfiguration(config, .permanently)
         guard completeErr == .success else {
-            throw ExtraDisplayError.setResolutionFailed(displayName, completeErr.rawValue)
+            throw AcuityError.setResolutionFailed(displayName, completeErr.rawValue)
         }
         return mode
     }

@@ -1,7 +1,7 @@
 import Foundation
 
 /// Errors thrown by Acuity commands.
-enum ExtraDisplayError: LocalizedError {
+enum AcuityError: LocalizedError {
     case notRoot
     case noExternalDisplays
     case displayNotFound(String)
