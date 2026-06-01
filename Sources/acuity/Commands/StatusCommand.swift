@@ -5,7 +5,7 @@ import Foundation
 struct StatusCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "status",
-        abstract: "Show detailed HiDPI and DDC/CI status for each connected external display."
+        abstract: "Show detailed HiDPI status for each connected external display."
     )
 
     func run() throws {
@@ -41,12 +41,6 @@ struct StatusCommand: ParsableCommand {
 
         // Current display mode
         print("  Current mode: \(modeStr)")
-
-        // DDC/CI capability
-        let ddcSupported = IOAVServiceBridge.isAvailable() && probeDDC(display)
-        let ddcIndicator = ddcSupported ? "✓" : "✗"
-        let ddcLabel = ddcSupported ? "supported" : "not available"
-        print("  DDC/CI:      \(ddcIndicator) \(ddcLabel)")
 
         print("")
     }
@@ -93,20 +87,6 @@ struct StatusCommand: ParsableCommand {
             return "✓ HiDPI active (\(pointWidth)×\(pointHeight) @\(scale)×\(refreshStr))"
         } else {
             return "✗ Standard (\(pointWidth)×\(pointHeight)\(refreshStr))"
-        }
-    }
-
-    // MARK: - DDC probe
-
-    /// Attempts a DDC brightness read to confirm DDC/CI is responsive.
-    /// A failure (any error) is treated as "not supported" rather than a fatal error.
-    private func probeDDC(_ display: DisplayInfo) -> Bool {
-        do {
-            let bridge = try IOAVServiceBridge(displayID: display.displayID)
-            _ = try bridge.readDDC(displayID: display.displayID, vcpCode: .brightness)
-            return true
-        } catch {
-            return false
         }
     }
 }

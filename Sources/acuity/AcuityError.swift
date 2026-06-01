@@ -9,8 +9,6 @@ enum AcuityError: LocalizedError {
     case invalidPreset(String, valid: [String])
     case plistWriteFailed(String)
     case windowServerDefaultsFailed(Int32)
-    case ddcNotSupported
-    case ddcError(String)
     case resolutionNotAvailable(String)
     case setResolutionFailed(String, Int32)
 
@@ -30,10 +28,6 @@ enum AcuityError: LocalizedError {
             return "Failed to write HiDPI override plist: \(reason)"
         case .windowServerDefaultsFailed(let code):
             return "Failed to enable WindowServer HiDPI key (exit code \(code)). Ensure /Library/Preferences is writable."
-        case .ddcNotSupported:
-            return "DDC/CI is not supported on this display or connection type."
-        case .ddcError(let reason):
-            return "DDC error: \(reason)"
         case .resolutionNotAvailable(let detail):
             return "No usable HiDPI mode for \(detail). Run 'acuity set-resolution --list' to see available sizes."
         case .setResolutionFailed(let detail, let code):
