@@ -1,5 +1,7 @@
 # Acuity
 
+> **⚠️ Sunset (2026-05-31).** This project is archived and no longer maintained. Use [BetterDisplay](https://betterdisplay.pro/) instead. Its free tier covers HiDPI scaling on standard-density external monitors (the core use case here) with a maintained GUI, and it persists the selected resolution across logout - the one gap Acuity never closed. The repo stays up as a reference for the EDID-override technique and the public-CoreGraphics live mode switching documented below.
+
 Native HiDPI scaling for external monitors on macOS. No SIP. No private entitlements. Open source.
 
 ![Swift 5.9+](https://img.shields.io/badge/Swift-5.9+-orange)
