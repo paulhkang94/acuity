@@ -95,21 +95,24 @@ public struct AgentManager {
 
     // MARK: - Private helpers
 
-    private static func buildPlist(executablePath: URL, command: String = "daemon") -> String {
+    static func buildPlist(executablePath: URL, command: String = "daemon") -> String {
         if command == "start" {
-            // Menubar mode: launch via `open -a App.app` through Launch Services.
+            // Menubar mode: launch the executable that lives INSIDE Acuity.app
+            // directly (executablePath is expected to be …/Acuity.app/Contents/MacOS/acuity).
             //
-            // Running the binary DIRECTLY from launchd (even inside an .app bundle)
-            // does NOT provide WindowServer access — NSApplication exits EX_CONFIG (78).
-            // `open -a` goes through Launch Services, which grants proper GUI session
-            // context and allows NSApplication to connect to WindowServer.
+            // Why the bundle binary and not `open -a` or the bare CLI binary:
+            //   - The bundle's inner executable carries the app's bundle identity,
+            //     so NSApplication connects to WindowServer and shows the status
+            //     item. The bare CLI binary (e.g. /usr/local/bin/acuity) has no
+            //     bundle identity and exits EX_CONFIG (78) under launchd.
+            //   - `open -a` would work, but `open` returns immediately, so launchd
+            //     cannot supervise the app — KeepAlive would relaunch `open`, not
+            //     the menubar, defeating auto-restart.
+            //   - Requires the Aqua session (LimitLoadToSessionType) and loading
+            //     via `launchctl bootstrap gui/<uid>` — both handled by install().
             //
-            // KeepAlive = false: `open` exits immediately after launching the app.
-            // The app manages its own lifecycle. launchd fires `open` once at login.
-            let appBundle = executablePath
-                .deletingLastPathComponent()  // MacOS/
-                .deletingLastPathComponent()  // Contents/
-                .deletingLastPathComponent()  // Acuity.app
+            // KeepAlive = true: relaunch the menubar on quit or crash so it cannot
+            // silently disappear. Verified: killing the process respawns it.
             return """
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -121,19 +124,21 @@ public struct AgentManager {
 
                 <key>ProgramArguments</key>
                 <array>
-                    <string>/usr/bin/open</string>
-                    <string>-a</string>
-                    <string>\(appBundle.path)</string>
+                    <string>\(executablePath.path)</string>
+                    <string>start</string>
                 </array>
-
-                <key>KeepAlive</key>
-                <false/>
 
                 <key>RunAtLoad</key>
                 <true/>
 
+                <key>KeepAlive</key>
+                <true/>
+
                 <key>LimitLoadToSessionType</key>
                 <string>Aqua</string>
+
+                <key>StandardErrorPath</key>
+                <string>\(NSHomeDirectory())/Library/Logs/acuity.stderr.log</string>
             </dict>
             </plist>
             """
