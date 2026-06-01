@@ -3,7 +3,7 @@ import CoreGraphics
 import Foundation
 
 /// Factory that builds the per-display section items for the status menu.
-/// Returns an array of NSMenuItems: header, brightness row, input submenu, separator.
+/// Returns an array of NSMenuItems: header, resolution submenu, separator.
 public struct DisplayMenuItem {
 
     // MARK: - Factory
