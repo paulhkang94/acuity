@@ -82,3 +82,10 @@ Repo-specific pitfalls, API quirks, and configuration gotchas discovered during 
 **Context:** `acuity status` reported "Current mode: HiDPI active (1280x720 @2x)" when the display was actually running 1920x1080 @2x (confirmed via `system_profiler` "UI Looks like").
 **Gotcha:** Don't identify the active mode by scanning `CGDisplayCopyAllDisplayModes` and matching pixel dimensions — multiple modes share the same framebuffer pixels (a 2560-pixel framebuffer is both a 1x 2560x1440 mode AND a 2x "looks like 1280x720" mode), so `.first(where:)` returns an arbitrary one. `CGDisplayCopyDisplayMode(displayID)` returns the genuinely active mode directly. A mode is HiDPI when `pixelWidth > width`; scale = `pixelWidth / width`. See `StatusCommand.describeMode`.
 **Tags:** acuity, display, status, cgdisplaycopydisplaymode, hidpi, current-mode
+
+### DDC needs a direct DisplayPort/USB-C link — HDMI on Apple Silicon also yields 0 IOAVService
+
+**Date:** 2026-05-31
+**Context:** Dell S2721DGF connected via HDMI **directly** to an M4 Pro MacBook (no dock). `ioreg -rc IOAVService | grep -c IOAVService` returned 0, and `acuity status` showed `DDC/CI: ✗ not available` — the same result as through the Thunderbolt dock.
+**Gotcha:** Going "direct" is not sufficient for DDC — the *port type* is what matters. The built-in HDMI path on Apple Silicon does not expose the DDC I2C channel (IOAVService) for many displays; tested here it gives 0 IOAVService entries, identical to the TB dock (which strips the channel — see prior gotcha). DDC realistically requires a **direct DisplayPort or USB-C (DisplayPort Alt Mode)** connection. For the S2721DGF (DP + 2× HDMI, no USB-C input), the working path is a USB-C→DisplayPort cable straight from the Mac. Quick check after any change: `ioreg -rc IOAVService | grep -c IOAVService` ( >0 means a DDC transport exists). HiDPI scaling is unaffected by connection type.
+**Tags:** acuity, ddc, hdmi, displayport, apple-silicon, ioavservice, connection, hardware-limitation

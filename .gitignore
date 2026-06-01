@@ -10,6 +10,9 @@ DerivedData/
 .claude/
 CLAUDE.md
 
+# Private strategy/research docs — never in public OSS repo
+docs/personal/
+
 # Private LOOP/CL infrastructure — never in public OSS repo
 hooks/
 scripts/cl-*.sh
