@@ -97,7 +97,8 @@ jobs:
               "https://raw.githubusercontent.com/paulhkang94/homebrew-acuity/main/Casks/acuity.rb" \
               2>/dev/null || echo "")
             TAP_VER=$(echo "$CASK" | grep -oE 'version "[0-9]+\.[0-9]+\.[0-9]+"' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "")
-            TAP_SHA=$(echo "$CASK" | grep -oE 'sha256 "[a-f0-9]+"' | grep -oE '[a-f0-9]+' || echo "")
+            # Match the 64-char hash only. A bare [a-f0-9]+ also captures "a256" from the word "sha256".
+            TAP_SHA=$(echo "$CASK" | grep 'sha256' | grep -oE '[a-f0-9]{64}' || echo "")
             if [[ "$TAP_VER" == "$VERSION" && "$TAP_SHA" == "$SHA256" ]]; then
               echo "Homebrew tap verified: v${VERSION} (attempt ${i})"
               exit 0
