@@ -32,18 +32,15 @@ struct StartCommand: ParsableCommand {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
 
-        let ddc = DDCController()
-        let controller = StatusMenuController(ddc: ddc)
-        let keyInterceptor = BrightnessKeyInterceptor(ddc: ddc)
+        let controller = StatusMenuController()
 
         // Start display reconfiguration watcher (same functionality as `acuity daemon`)
-        let watcher = ReconfigurationWatcher()
+        let watcher = ReconfigurationWatcher(selectionStore: .standard())
         watcher.startWatching()
 
         DispatchQueue.main.async {
             controller.setup()
-            let started = keyInterceptor.start()
-            StartCommand.log("menubar started — BrightnessKeyInterceptor: \(started ? "listening for brightness keys" : "skipped (no Input Monitoring permission)")")
+            StartCommand.log("menubar started — resolution control only (DDC features removed)")
         }
 
         app.run()

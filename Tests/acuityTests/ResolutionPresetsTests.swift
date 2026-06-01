@@ -20,12 +20,13 @@ final class ResolutionPresetsTests: XCTestCase {
         let entries = DisplayPresets.forNativeResolution(width: 2560, height: 1440, preset: .all)
         let pairs = logicalPairs(entries)
 
-        // The full QHD ladder — the resolutions macOS gatekeeps for non-Apple panels.
-        XCTAssertEqual(entries.count, 8, "QHD native must produce the full 8-rung ladder")
+        // The full QHD ladder: the resolutions macOS gatekeeps for non-Apple panels.
+        XCTAssertEqual(entries.count, 9, "QHD native must produce the full 9-rung ladder")
         XCTAssertTrue(pairs.contains([2560, 1440]), "Must offer native-as-HiDPI (renders 5120×2880 supersampled)")
         XCTAssertTrue(pairs.contains([2048, 1152]), "Must offer the 2048×1152 'more space' retina mode")
         XCTAssertTrue(pairs.contains([1920, 1080]), "Must offer the 1920×1080 HiDPI sweet spot")
         XCTAssertTrue(pairs.contains([1680, 945]),  "Must offer 1680×945")
+        XCTAssertTrue(pairs.contains([1600, 900]),  "Must offer 1600×900 (renders 3200×1800 supersampled, the BetterDisplay-parity mode)")
         XCTAssertTrue(pairs.contains([1440, 810]),  "Must offer 1440×810")
     }
 
@@ -49,7 +50,7 @@ final class ResolutionPresetsTests: XCTestCase {
         XCTAssertFalse(pairs.contains([2560, 1440]), "1080p ladder lacks the 2560×1440 retina mode — the regression")
         XCTAssertFalse(pairs.contains([2048, 1152]), "1080p ladder lacks 2048×1152")
         XCTAssertFalse(pairs.contains([1440, 810]),  "1080p ladder lacks 1440×810")
-        XCTAssertLessThan(entries.count, 8, "Degraded ladder is strictly smaller than the QHD ladder")
+        XCTAssertLessThan(entries.count, 9, "Degraded ladder is strictly smaller than the QHD ladder")
     }
 
     // MARK: - 4K UHD 3840×2160

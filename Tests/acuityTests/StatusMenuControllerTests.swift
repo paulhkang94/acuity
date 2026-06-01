@@ -4,18 +4,18 @@ import XCTest
 
 final class StatusMenuControllerTests: XCTestCase {
 
-    // MARK: - rebuildMenu
+    // MARK: - StatusMenuController
 
-    func test_rebuildMenu_doesNotCrash_withMockDDC() {
-        let mock = MockDDCController()
-        let controller = StatusMenuController(ddc: mock)
-        // rebuildMenu without setup (no NSStatusBar) should not crash
-        // We test the menu population logic via DisplayMenuItem directly
-        _ = mock
+    func test_statusMenuController_initsWithoutDDC() {
+        // The menubar no longer depends on DDC — it must construct with no args.
+        let controller = StatusMenuController()
         _ = controller
     }
 
-    // MARK: - MockDDCController recording
+    // MARK: - MockDDCController / DDC protocol
+    //
+    // DDC is removed from the menubar but still backs the CLI brightness /
+    // contrast / input commands, so the protocol + mock stay covered.
 
     func test_mockDDC_recordsBrightnessSet() throws {
         let mock = MockDDCController()
@@ -59,69 +59,44 @@ final class StatusMenuControllerTests: XCTestCase {
         XCTAssertThrowsError(try mock.setInput(.hdmi1, display: display))
     }
 
-    // MARK: - DisplayMenuItem
+    // MARK: - DisplayMenuItem (DDC-stripped: header + resolution + separator)
 
     func test_displayMenuItem_items_containsExpectedCount() {
-        let mock = MockDDCController()
-        mock.brightnessToReturn = 50
         let display = makeDisplay()
-        let items = DisplayMenuItem.items(for: display, ddc: mock, index: 0)
-        // Expected: header + brightness + input + resolution + separator = 5
-        XCTAssertEqual(items.count, 5)
+        let items = DisplayMenuItem.items(for: display, index: 0)
+        // After the DDC strip: header + resolution + separator = 3.
+        XCTAssertEqual(items.count, 3)
+    }
+
+    func test_displayMenuItem_header_isNotEnabled() {
+        let display = makeDisplay()
+        let items = DisplayMenuItem.items(for: display, index: 0)
+        XCTAssertFalse(items[0].isEnabled)
     }
 
     func test_displayMenuItem_resolutionItem_hasSubmenuWithNativeRow() {
-        let mock = MockDDCController()
         let display = makeDisplay()
-        let items = DisplayMenuItem.items(for: display, ddc: mock, index: 0)
-        // Resolution submenu sits between the input item and the trailing separator.
-        let resolutionItem = items[3]
+        let items = DisplayMenuItem.items(for: display, index: 0)
+        // Resolution submenu now sits at index 1 (header, resolution, separator).
+        let resolutionItem = items[1]
         XCTAssertNotNil(resolutionItem.submenu, "Resolution item must carry a submenu")
         // The native row is always present regardless of live display modes.
         XCTAssertGreaterThanOrEqual(resolutionItem.submenu?.numberOfItems ?? 0, 1)
     }
 
-    func test_displayMenuItem_header_isNotEnabled() {
-        let mock = MockDDCController()
-        let display = makeDisplay()
-        let items = DisplayMenuItem.items(for: display, ddc: mock, index: 0)
-        XCTAssertFalse(items[0].isEnabled)
-    }
-
-    func test_displayMenuItem_brightnessItem_hasView() {
-        let mock = MockDDCController()
-        let display = makeDisplay()
-        let items = DisplayMenuItem.items(for: display, ddc: mock, index: 0)
-        XCTAssertNotNil(items[1].view)
-        XCTAssertTrue(items[1].view is BrightnessSliderView)
-    }
-
-    func test_displayMenuItem_inputItem_hasSubmenu() {
-        let mock = MockDDCController()
-        let display = makeDisplay()
-        let items = DisplayMenuItem.items(for: display, ddc: mock, index: 0)
-        XCTAssertNotNil(items[2].submenu)
-        XCTAssertEqual(items[2].submenu?.numberOfItems, InputSource.allCases.count)
-    }
-
     func test_displayMenuItem_lastItem_isSeparator() {
-        let mock = MockDDCController()
         let display = makeDisplay()
-        let items = DisplayMenuItem.items(for: display, ddc: mock, index: 0)
+        let items = DisplayMenuItem.items(for: display, index: 0)
         XCTAssertTrue(items.last?.isSeparatorItem ?? false)
     }
 
-    // MARK: - BrightnessSliderView debounce
-
-    func test_brightnessSliderView_doesNotCallDDCImmediately() {
-        // The slider view debounces writes by 150ms.
-        // Creating a slider and NOT waiting should result in zero DDC calls.
-        let mock = MockDDCController()
+    /// Regression guard for the DDC strip: no brightness slider view, and the
+    /// resolution submenu is the only submenu (no input submenu creeps back).
+    func test_displayMenuItem_hasNoBrightnessOrInputRows() {
         let display = makeDisplay()
-        let view = BrightnessSliderView(ddc: mock, display: display, currentBrightness: 50, ddcAvailable: true)
-        // No programmatic change — should be zero DDC calls
-        XCTAssertEqual(mock.brightnessSetCalls.count, 0)
-        _ = view
+        let items = DisplayMenuItem.items(for: display, index: 0)
+        XCTAssertNil(items.first(where: { $0.view != nil }), "No brightness slider view should remain")
+        XCTAssertEqual(items.filter { $0.submenu != nil }.count, 1, "Only the resolution submenu should remain")
     }
 
     // MARK: - Helpers

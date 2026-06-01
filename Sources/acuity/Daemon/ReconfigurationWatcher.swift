@@ -12,10 +12,16 @@ public final class ReconfigurationWatcher {
     // MARK: - State
 
     private var isWatching = false
+    private let selectionStore: SelectionStore
 
     // MARK: - Lifecycle
 
-    public init() {}
+    /// - Parameter selectionStore: remembers the user's chosen resolution per
+    ///   display, so reconnect/boot re-applies THAT size rather than the
+    ///   largest available HiDPI mode.
+    public init(selectionStore: SelectionStore) {
+        self.selectionStore = selectionStore
+    }
 
     /// Registers the display reconfiguration callback.
     ///
@@ -36,6 +42,10 @@ public final class ReconfigurationWatcher {
         )
 
         fputs("[acuity] ReconfigurationWatcher started.\n", stderr)
+
+        // Cold-boot path: displays already attached at login never fire the
+        // .addFlag callback, so re-apply each remembered choice now.
+        applyRecordedSelectionsToConnectedDisplays()
     }
 
     /// Removes the display reconfiguration callback.
@@ -87,13 +97,65 @@ public final class ReconfigurationWatcher {
             return
         }
 
+        // Prefer the user's remembered choice over the largest-HiDPI default.
+        if let sel = selectionStore.selection(vendorID: vendorID, productID: productID) {
+            fputs(
+                "[acuity] Override found — applying remembered \(sel.width)×\(sel.height) for display \(displayID).\n",
+                stderr
+            )
+            applyRecordedSelection(
+                sel,
+                displayID: displayID,
+                displayName: String(format: "Display %04x:%04x", vendorID, productID)
+            )
+            return
+        }
+
         fputs(
-            "[acuity] Override found — attempting to apply HiDPI mode for display \(displayID).\n",
+            "[acuity] Override found — no remembered choice; applying largest HiDPI for display \(displayID).\n",
             stderr
         )
-
         applyHiDPIMode(displayID: displayID)
     }
+
+    // MARK: - Remembered-selection application
+
+    /// Re-applies a remembered "looks like" size via the public CoreGraphics
+    /// path (the same one `set-resolution` uses). Falls back to the largest
+    /// HiDPI mode if that specific size can't be applied.
+    private func applyRecordedSelection(
+        _ sel: SelectionStore.Selection,
+        displayID: CGDirectDisplayID,
+        displayName: String
+    ) {
+        do {
+            _ = try ResolutionController.apply(
+                width: sel.width, height: sel.height, preferHiDPI: true,
+                toDisplayID: displayID, displayName: displayName
+            )
+            fputs("[acuity] Re-applied remembered \(sel.width)×\(sel.height) for \(displayName).\n", stderr)
+        } catch {
+            fputs(
+                "[acuity] Could not apply remembered \(sel.width)×\(sel.height) for \(displayName): "
+                + "\(error) — falling back to largest HiDPI.\n",
+                stderr
+            )
+            applyHiDPIMode(displayID: displayID)
+        }
+    }
+
+    /// Cold-boot path: displays already attached at login don't fire the
+    /// `.addFlag` callback, so re-apply each remembered choice at daemon start.
+    private func applyRecordedSelectionsToConnectedDisplays() {
+        for display in DisplayEnumerator.allDisplays() where !display.isBuiltIn {
+            guard let sel = selectionStore.selection(
+                vendorID: display.vendorID, productID: display.productID
+            ) else { continue }
+            applyRecordedSelection(sel, displayID: display.displayID, displayName: display.name)
+        }
+    }
+
+    // MARK: - HiDPI application
 
     /// Applies HiDPI mode using CGS private APIs resolved via dlsym.
     ///

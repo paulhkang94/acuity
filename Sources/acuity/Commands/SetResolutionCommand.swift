@@ -44,6 +44,10 @@ struct SetResolutionCommand: ParsableCommand {
             throw ExtraDisplayError.invalidDisplayArgument("set-resolution needs --width and --height (or --list)")
         }
 
+        // Remember each choice so the daemon re-applies THIS size on reboot /
+        // reconnect, rather than defaulting to the largest HiDPI mode.
+        let store = SelectionStore.standard()
+
         for info in targets {
             let mode = try ResolutionController.apply(
                 width: width, height: height, preferHiDPI: !noHidpi,
@@ -52,6 +56,16 @@ struct SetResolutionCommand: ParsableCommand {
             let kind = mode.pixelWidth > mode.width ? "HiDPI, sharp" : "1×, soft"
             print("✓ \(info.name) → looks like \(mode.width)×\(mode.height) "
                 + "(renders \(mode.pixelWidth)×\(mode.pixelHeight) @\(Int(mode.refreshRate.rounded()))Hz · \(kind))")
+
+            // Only remember HiDPI selections — a 1× (--no-hidpi) pick is a
+            // one-off comparison, not a preference worth restoring on boot.
+            if !noHidpi {
+                do {
+                    try store.record(vendorID: info.vendorID, productID: info.productID, width: width, height: height)
+                } catch {
+                    fputs("warning: could not remember resolution choice for \(info.name): \(error)\n", stderr)
+                }
+            }
         }
     }
 

@@ -13,7 +13,7 @@ struct DaemonCommand: ParsableCommand {
         let version = ExtraDisplay.configuration.version
         fputs("[acuity] daemon starting — version \(version)\n", stderr)
 
-        let watcher = ReconfigurationWatcher()
+        let watcher = ReconfigurationWatcher(selectionStore: .standard())
         watcher.startWatching()
 
         // Block forever on the CoreFoundation run loop.

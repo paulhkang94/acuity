@@ -2,21 +2,12 @@ import AppKit
 import Foundation
 
 /// Owns the NSStatusItem and rebuilds the menu on display change events.
-/// Injected with DDCControlling for testability.
 public final class StatusMenuController: NSObject {
 
     // MARK: - State
 
     private var statusItem: NSStatusItem?
-    private let ddc: DDCControlling
     private var displays: [DisplayInfo] = []
-
-    // MARK: - Init
-
-    public init(ddc: DDCControlling) {
-        self.ddc = ddc
-        super.init()
-    }
 
     // MARK: - Lifecycle
 
@@ -57,7 +48,7 @@ public final class StatusMenuController: NSObject {
             menu.addItem(NSMenuItem.separator())
         } else {
             for (index, display) in externalDisplays.enumerated() {
-                let items = DisplayMenuItem.items(for: display, ddc: ddc, index: index)
+                let items = DisplayMenuItem.items(for: display, index: index)
                 for item in items {
                     menu.addItem(item)
                 }
