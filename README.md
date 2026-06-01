@@ -1,6 +1,6 @@
 # Acuity
 
-> **⚠️ Sunset (2026-05-31).** This project is archived and no longer maintained. Use [BetterDisplay](https://betterdisplay.pro/) instead. Its free tier covers HiDPI scaling on standard-density external monitors (the core use case here) with a maintained GUI, and it persists the selected resolution across logout - the one gap Acuity never closed. The repo stays up as a reference for the EDID-override technique and the public-CoreGraphics live mode switching documented below.
+> **Active.** Acuity provides persistent supersampled HiDPI for standard-density QHD external monitors. This is the use case BetterDisplay's free tier also covers, but BetterDisplay does not persist the chosen mode across reboot without keeping the app resident. Acuity remembers your chosen "looks like" size per display and re-applies it on reconnect and at login via a small LaunchAgent.
 
 Native HiDPI scaling for external monitors on macOS. No SIP. No private entitlements. Open source.
 
@@ -14,7 +14,7 @@ macOS enables HiDPI ("Retina") scaling based on a display's **pixel density, not
 
 The fix is the long-established EDID-override technique: write a plist to `/Library/Displays/Contents/Resources/Overrides/` that macOS reads at boot to expose additional **supersampled** HiDPI modes (rendered at 2× and downsampled to the panel). No SIP disable, no kernel extensions, no private entitlements.
 
-Acuity automates the override generation, switches modes live via public CoreGraphics APIs, re-applies on reconnect via a LaunchAgent daemon, and provides DDC/CI control for brightness, contrast, and input switching.
+Acuity automates the override generation, switches modes live via public CoreGraphics APIs, and remembers your chosen mode so a LaunchAgent re-applies it on reconnect and at login. The menubar is resolution-focused; DDC/CI control for brightness, contrast, and input remains available as CLI commands (DDC is unreliable over Thunderbolt docks, see the DDC note below).
 
 > **Sharpness ceiling.** HiDPI improves anti-aliasing but cannot exceed the panel's physical pixel density. On a ~109 PPI panel it's clearly smoother than blurry scaling, but it is not true Retina — that requires a denser panel (4K ≈ 163 PPI, 5K ≈ 218 PPI), which then needs no override at all. Acuity helps most on sub-Retina panels where you want larger-but-sharp UI.
 
