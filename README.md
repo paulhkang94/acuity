@@ -18,21 +18,44 @@ Acuity automates the override generation, switches modes live via public CoreGra
 
 > **Sharpness ceiling.** HiDPI improves anti-aliasing but cannot exceed the panel's physical pixel density. On a ~109 PPI panel it's clearly smoother than blurry scaling, but it is not true Retina — that requires a denser panel (4K ≈ 163 PPI, 5K ≈ 218 PPI), which then needs no override at all. Acuity helps most on sub-Retina panels where you want larger-but-sharp UI.
 
-## Quick install
+## Requirements
+
+- macOS 13 (Ventura) or later
+- Apple Silicon or Intel Mac
+- A standard-density external display with an EDID (tested on the Dell S2721DGF, 27" QHD 2560×1440)
+
+## Install
+
+### Homebrew (recommended)
 
 ```bash
-# 1. Build and install the binary
-./scripts/install.sh
+brew install --cask paulhkang94/acuity/acuity
+```
 
-# 2. Enable HiDPI for all connected external displays (requires sudo)
+### From source
+
+```bash
+git clone https://github.com/paulhkang94/acuity.git
+cd acuity
+./scripts/install.sh
+```
+
+## Setup
+
+Once installed, enable HiDPI and start the daemon:
+
+```bash
+# 1. Enable HiDPI for all connected external displays (writes override plists; needs sudo)
 sudo acuity enable --all --preset all
 
-# 3. Reboot to activate the new display modes
+# 2. Reboot so macOS picks up the new display modes
 sudo reboot
 
-# 4. Install the daemon so overrides re-apply automatically on reconnect
+# 3. Install the daemon so overrides re-apply automatically on reconnect and at login
 acuity install
 ```
+
+Only the `enable` and `reboot` steps need `sudo`. Switching resolutions live with `acuity set-resolution` and installing the daemon with `acuity install` do not.
 
 ## Commands
 
