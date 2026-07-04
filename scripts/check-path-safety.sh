@@ -92,6 +92,35 @@ _check_sh_file() {
       _emit_warn "${label}:${lineno}" "cd without '||' error handling: ${content// /}"
     fi
   done < <(grep -n '^\s*cd ' "$file" || true)
+
+  # Check 4: ((var++)) or ((var--)) under set -e — arithmetic post-increment trap
+  # Under set -euo pipefail, ((var++)) exits 1 when var=0 because the expression
+  # evaluates to the OLD value (0 = falsy) before incrementing. Silent script death.
+  # Safe alternative: var=$((var + 1)) — arithmetic substitution, never exits non-zero.
+  # Only warn if the script uses set -e (intentional: hook scripts with no-euo are exempt).
+  if grep -q "set -euo pipefail\|set -e" "$file" && ! grep -q "path-safety: no-euo" "$file"; then
+    while IFS= read -r line; do
+      lineno="${line%%:*}"
+      local content="${line#*:}"
+      _emit_warn "${label}:${lineno}" "arithmetic post-increment ((var++)) under set -e: exits when var=0. Use var=\$((var + 1))"
+    done < <(grep -nE '^\s*\(\([a-zA-Z_][a-zA-Z_0-9]*(\+\+|--)\)\)' "$file" || true)
+  fi
+
+  # Check 5: bash scripts > 30 lines that parse JSON with jq — prefer Python.
+  # Bash jq idioms (jq -r ... 2>/dev/null || exit 0) silently discard errors and
+  # accumulate dialect/quoting bugs. Python json.load() is correct by default.
+  # Exemption: add "# bash-justified: reason" to the script header to suppress.
+  # Exemption: thin wrappers that only check tool availability (command -v jq) are fine.
+  local line_count
+  line_count=$(wc -l < "$file" 2>/dev/null || echo 0)
+  if [[ "$line_count" -gt 30 ]] && \
+     ! grep -q "bash-justified:" "$file" 2>/dev/null; then
+    # Detect actual JSON parsing: jq with flags or filter (not bare `command -v jq`)
+    if grep -qE '^\s*[^#]*\bjq\s+(-[rcenRse]+|'"'"'|\")' "$file" 2>/dev/null || \
+       grep -qE '\|\s*jq\b' "$file" 2>/dev/null; then
+      _emit_warn "${label}" "bash script > 30 lines uses jq for JSON parsing — consider Python (scripts/claim_verify.py is the reference). Add '# bash-justified: reason' to suppress."
+    fi
+  fi
 }
 
 _check_plist_file() {
