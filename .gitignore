@@ -18,6 +18,7 @@ hooks/
 scripts/cl-*.sh
 scripts/cl-*.txt
 scripts/claude-*.sh
+scripts/claude_*.py
 .github/workflows/loop-tests.yml
 __pycache__/
 *.pyc
