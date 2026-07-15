@@ -57,6 +57,16 @@ jobs:
       - name: Run tests
         run: swift test
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Run Python tests
+        run: |
+          python3 -m pip install --quiet pytest
+          python3 -m pytest pytests/ -q
+
   bundle:
     name: App Bundle
     runs-on: macos-15
