@@ -21,16 +21,20 @@ final class AgentManagerTests: XCTestCase {
         XCTAssertTrue(plist.contains("<string>start</string>"), "must pass the start subcommand")
     }
 
-    func test_startPlist_keepAliveIsTrue() {
+    func test_startPlist_keepAlive_respawnsOnCrashOnly_soQuitSticks() throws {
+        // Regression: a bare KeepAlive=true made launchd respawn the menubar
+        // instantly after "Quit Acuity". The agent must use
+        // KeepAlive={SuccessfulExit: false} — respawn on crash, honor clean quit.
         let plist = AgentManager.buildPlist(executablePath: bundleBinary, command: "start")
-        // The substring immediately following the KeepAlive key must be <true/>.
-        guard let range = plist.range(of: "<key>KeepAlive</key>") else {
-            return XCTFail("plist missing KeepAlive key")
+        let parsed = try PropertyListSerialization.propertyList(
+            from: Data(plist.utf8), options: [], format: nil
+        ) as? [String: Any]
+
+        guard let keepAlive = parsed?["KeepAlive"] as? [String: Bool] else {
+            return XCTFail("start plist KeepAlive must be a dict, got: \(String(describing: parsed?["KeepAlive"]))")
         }
-        let after = plist[range.upperBound...].prefix(40)
-        XCTAssertTrue(after.contains("<true/>"),
-            "menubar agent must KeepAlive=true so it cannot silently disappear")
-        XCTAssertFalse(after.contains("<false/>"), "KeepAlive must not be false")
+        XCTAssertEqual(keepAlive, ["SuccessfulExit": false],
+            "menubar agent must respawn only on unsuccessful exit so Quit Acuity sticks")
     }
 
     func test_startPlist_limitsToAquaSession() {
