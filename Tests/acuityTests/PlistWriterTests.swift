@@ -166,7 +166,117 @@ final class PlistWriterTests: XCTestCase {
             "exists() must return false after remove()")
     }
 
+    // MARK: - isAcuityOverride / cleanAcuityOverrides (uninstall --clean)
+
+    func test_isAcuityOverride_trueForAcuityWrittenPlist_falseForForeign() throws {
+        let tempBase = makeTempBase()
+        defer { cleanup(tempBase) }
+
+        try PlistWriter.write(
+            vendorID: 0x10ac, productID: 0x41da, productName: "Test",
+            entries: [HiDPIEntry(logicalWidth: 1280, logicalHeight: 720)],
+            baseURL: tempBase
+        )
+        let acuityFile = PlistWriter.overridePath(vendorID: 0x10ac, productID: 0x41da, baseURL: tempBase)
+        XCTAssertTrue(PlistWriter.isAcuityOverride(at: acuityFile),
+            "A plist written by PlistWriter.write() must carry the marker")
+
+        let foreignFile = try writeForeignOverride(base: tempBase, vendorID: 0xBEEF, productID: 0x0001)
+        XCTAssertFalse(PlistWriter.isAcuityOverride(at: foreignFile),
+            "A plist without the target-default-ppmm marker is not acuity's")
+
+        let garbageFile = tempBase.appendingPathComponent("DisplayVendorID-beef/DisplayProductID-9999")
+        try Data("not a plist".utf8).write(to: garbageFile)
+        XCTAssertFalse(PlistWriter.isAcuityOverride(at: garbageFile),
+            "An unparseable file is not acuity's")
+    }
+
+    func test_clean_removesAcuityFiles_skipsForeign_keepsForeignOnDisk() throws {
+        let tempBase = makeTempBase()
+        defer { cleanup(tempBase) }
+
+        try PlistWriter.write(
+            vendorID: 0x10ac, productID: 0x41da, productName: "Mine",
+            entries: [HiDPIEntry(logicalWidth: 1280, logicalHeight: 720)],
+            baseURL: tempBase
+        )
+        let foreignFile = try writeForeignOverride(base: tempBase, vendorID: 0xBEEF, productID: 0x0001)
+
+        let result = PlistWriter.cleanAcuityOverrides(baseURL: tempBase)
+
+        XCTAssertEqual(result.removed.count, 1, "Exactly the acuity-owned file is removed")
+        XCTAssertEqual(result.skippedForeign.count, 1, "The foreign file is reported as skipped")
+        XCTAssertTrue(result.failed.isEmpty)
+        XCTAssertFalse(PlistWriter.exists(vendorID: 0x10ac, productID: 0x41da, baseURL: tempBase),
+            "Acuity's override must be gone")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: foreignFile.path),
+            "The foreign override must remain on disk")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: foreignFile.deletingLastPathComponent().path),
+            "The foreign vendor dir must remain")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: tempBase.appendingPathComponent("DisplayVendorID-10ac").path),
+            "The emptied acuity vendor dir must be removed")
+    }
+
+    func test_clean_reportsFailures_insteadOfCountingThemAsRemoved() throws {
+        let tempBase = makeTempBase()
+        defer {
+            // Restore write permission so cleanup can delete the tree.
+            let vendorDir = tempBase.appendingPathComponent("DisplayVendorID-10ac")
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: vendorDir.path)
+            cleanup(tempBase)
+        }
+
+        try PlistWriter.write(
+            vendorID: 0x10ac, productID: 0x41da, productName: "Locked",
+            entries: [HiDPIEntry(logicalWidth: 1280, logicalHeight: 720)],
+            baseURL: tempBase
+        )
+        // Make the vendor dir read-only so removeItem fails — simulates the
+        // root:wheel /Library/Displays tree hit without sudo.
+        let vendorDir = tempBase.appendingPathComponent("DisplayVendorID-10ac")
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: vendorDir.path)
+
+        let result = PlistWriter.cleanAcuityOverrides(baseURL: tempBase)
+
+        XCTAssertTrue(result.removed.isEmpty, "A failed removeItem must NOT be counted as removed")
+        XCTAssertEqual(result.failed.count, 1, "The failure must be reported")
+        XCTAssertTrue(PlistWriter.exists(vendorID: 0x10ac, productID: 0x41da, baseURL: tempBase),
+            "The file is still on disk")
+    }
+
+    func test_clean_emptyTree_returnsEmptyResult() {
+        let tempBase = makeTempBase()
+        defer { cleanup(tempBase) }
+
+        let result = PlistWriter.cleanAcuityOverrides(baseURL: tempBase)
+        XCTAssertTrue(result.removed.isEmpty)
+        XCTAssertTrue(result.skippedForeign.isEmpty)
+        XCTAssertTrue(result.failed.isEmpty)
+
+        let missing = tempBase.appendingPathComponent("does-not-exist", isDirectory: true)
+        let resultMissing = PlistWriter.cleanAcuityOverrides(baseURL: missing)
+        XCTAssertTrue(resultMissing.removed.isEmpty && resultMissing.failed.isEmpty)
+    }
+
     // MARK: - Helpers
+
+    /// Writes an override plist WITHOUT acuity's marker — simulates a file
+    /// created by another tool (e.g. RDM, BetterDisplay, or a manual edit).
+    private func writeForeignOverride(base: URL, vendorID: UInt32, productID: UInt32) throws -> URL {
+        let url = PlistWriter.overridePath(vendorID: vendorID, productID: productID, baseURL: base)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        let plist: [String: Any] = [
+            "DisplayVendorID": Int(vendorID),
+            "DisplayProductID": Int(productID),
+            "DisplayProductName": "Foreign Display",
+        ]
+        let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+        try data.write(to: url)
+        return url
+    }
 
     private func makeTempBase() -> URL {
         let url = FileManager.default.temporaryDirectory

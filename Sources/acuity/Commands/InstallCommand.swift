@@ -122,37 +122,54 @@ struct UninstallCommand: ParsableCommand {
             print("  ℹ LaunchAgent is not installed — nothing to remove.")
         }
 
-        // Step 2: Optionally remove all override plists.
+        // Step 3: Optionally remove acuity's override plists.
+        // Only files carrying acuity's ownership marker (target-default-ppmm,
+        // see PlistWriter) are deleted; overrides other tools wrote are left
+        // alone. Failures are reported per file, never counted as removals.
         if clean {
             print("\n  Removing HiDPI override plists (--clean)...")
-            let overridesBase = PlistWriter.overridesBasePath
-            let fm = FileManager.default
+            let result = PlistWriter.cleanAcuityOverrides()
 
-            if fm.fileExists(atPath: overridesBase.path) {
-                do {
-                    let vendorDirs = try fm.contentsOfDirectory(
-                        at: overridesBase,
-                        includingPropertiesForKeys: nil
-                    ).filter { $0.lastPathComponent.hasPrefix("DisplayVendorID-") }
+            for url in result.removed {
+                print("  ✓ Removed \(url.path)")
+            }
+            for url in result.skippedForeign {
+                print("  ℹ Skipped \(url.path) — not written by acuity.")
+            }
+            var sawPermissionError = false
+            for failure in result.failed {
+                print("  ✗ Could not remove \(failure.url.path): \(failure.error.localizedDescription)")
+                if isPermissionError(failure.error) { sawPermissionError = true }
+            }
 
-                    var removed = 0
-                    for vendorDir in vendorDirs {
-                        let products = (try? fm.contentsOfDirectory(at: vendorDir, includingPropertiesForKeys: nil)) ?? []
-                        for product in products where product.lastPathComponent.hasPrefix("DisplayProductID-") {
-                            try? fm.removeItem(at: product)
-                            removed += 1
-                        }
-                        try? fm.removeItem(at: vendorDir)
-                    }
-                    print("  ✓ Removed \(removed) override plist(s).")
-                } catch {
-                    print("  ⚠ Could not enumerate overrides: \(error.localizedDescription)")
-                }
+            if result.removed.isEmpty && result.skippedForeign.isEmpty && result.failed.isEmpty {
+                print("  ℹ No override plists found — nothing to clean.")
+            } else if result.failed.isEmpty {
+                print("  ✓ Removed \(result.removed.count) override plist(s).")
             } else {
-                print("  ℹ No overrides directory found — nothing to clean.")
+                print("  ⚠ Removed \(result.removed.count), failed \(result.failed.count).")
+                if sawPermissionError {
+                    print("  → /Library/Displays is root-owned. Try: sudo acuity uninstall --clean")
+                }
             }
         }
 
         print("\n✓ Uninstall complete. Reboot to deactivate any active HiDPI overrides.")
+    }
+
+    /// `true` when the error is a permission failure (Cocoa write-permission
+    /// error or an underlying POSIX EACCES/EPERM).
+    private func isPermissionError(_ error: Error) -> Bool {
+        let ns = error as NSError
+        if ns.domain == NSCocoaErrorDomain,
+           ns.code == CocoaError.fileWriteNoPermission.rawValue {
+            return true
+        }
+        if let underlying = ns.userInfo[NSUnderlyingErrorKey] as? NSError,
+           underlying.domain == NSPOSIXErrorDomain,
+           underlying.code == Int(EACCES) || underlying.code == Int(EPERM) {
+            return true
+        }
+        return false
     }
 }
