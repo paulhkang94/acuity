@@ -30,6 +30,27 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Hard gate: the tag must match the version hardcoded in all three
+      # sources. Fails the release before any expensive signing/notarization.
+      - name: Version sync gate (tag == Acuity.swift == Info.plist == mcp/server.py)
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          SWIFT_VERSION=$(sed -n 's/.*version: "\([0-9][0-9.]*\)".*/\1/p' Sources/acuity/Acuity.swift | head -1)
+          PLIST_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Resources/Info.plist)
+          MCP_VERSION=$(sed -n 's/.*"version": "\([0-9][0-9.]*\)".*/\1/p' mcp/server.py | head -1)
+          echo "tag=$TAG_VERSION swift=$SWIFT_VERSION plist=$PLIST_VERSION mcp=$MCP_VERSION"
+          fail=0
+          if [ "$SWIFT_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error file=Sources/acuity/Acuity.swift::version '$SWIFT_VERSION' != tag '$TAG_VERSION'"; fail=1
+          fi
+          if [ "$PLIST_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error file=Resources/Info.plist::CFBundleShortVersionString '$PLIST_VERSION' != tag '$TAG_VERSION'"; fail=1
+          fi
+          if [ "$MCP_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error file=mcp/server.py::serverInfo version '$MCP_VERSION' != tag '$TAG_VERSION'"; fail=1
+          fi
+          exit $fail
+
       - name: Swift version
         run: swift --version
 

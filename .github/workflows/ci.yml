@@ -21,6 +21,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Warn-level: the three hardcoded version strings must agree with each
+      # other (no tag involved). release.yml hard-fails against the tag.
+      - name: Version consistency check (warn-only)
+        run: |
+          SWIFT_VERSION=$(sed -n 's/.*version: "\([0-9][0-9.]*\)".*/\1/p' Sources/acuity/Acuity.swift | head -1)
+          PLIST_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Resources/Info.plist)
+          MCP_VERSION=$(sed -n 's/.*"version": "\([0-9][0-9.]*\)".*/\1/p' mcp/server.py | head -1)
+          echo "swift=$SWIFT_VERSION plist=$PLIST_VERSION mcp=$MCP_VERSION"
+          if [ "$SWIFT_VERSION" != "$PLIST_VERSION" ] || [ "$SWIFT_VERSION" != "$MCP_VERSION" ]; then
+            echo "::warning::Version strings disagree: Acuity.swift=$SWIFT_VERSION Info.plist=$PLIST_VERSION mcp/server.py=$MCP_VERSION — release.yml will hard-fail on the next tag"
+          fi
+
       # Use runner's default Swift (matches system SDK)
       - name: Swift version
         run: swift --version
