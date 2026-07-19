@@ -42,7 +42,21 @@ struct StatusCommand: ParsableCommand {
         // Current display mode
         print("  Current mode: \(modeStr)")
 
+        // Remembered selection (what the daemon re-applies on reconnect/login)
+        if let sel = SelectionStore.standard().selection(
+            vendorID: display.vendorID, productID: display.productID
+        ) {
+            print("  Remembered:  \(Self.describeSelection(sel))")
+        }
+
         print("")
+    }
+
+    /// Pure, testable formatter for the remembered-selection line.
+    /// `hz == nil` means "resolution only — refresh rate left alone".
+    static func describeSelection(_ sel: SelectionStore.Selection) -> String {
+        let hzStr = sel.hz.map { " @ \($0)Hz" } ?? ""
+        return "\(sel.width)×\(sel.height)\(hzStr)"
     }
 
     // MARK: - Display mode detection

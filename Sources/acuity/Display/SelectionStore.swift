@@ -13,13 +13,22 @@ import Foundation
 /// tests pass a temp-file-backed store.
 public final class SelectionStore {
 
-    /// One remembered logical ("looks like") size for a display.
+    /// One remembered logical ("looks like") size for a display, plus the
+    /// refresh rate it was applied at.
+    ///
+    /// `hz == nil` means "apply the resolution, leave the refresh rate alone" —
+    /// the pre-Hz behavior. Entries written by older binaries have no "hz" key
+    /// and decode to exactly that (synthesized Codable treats a missing key for
+    /// an Optional as nil), so legacy stores keep working with unchanged
+    /// semantics; older binaries likewise ignore the extra "hz" key on decode.
     public struct Selection: Codable, Equatable {
         public let width: Int
         public let height: Int
-        public init(width: Int, height: Int) {
+        public let hz: Int?
+        public init(width: Int, height: Int, hz: Int? = nil) {
             self.width = width
             self.height = height
+            self.hz = hz
         }
     }
 
@@ -49,10 +58,14 @@ public final class SelectionStore {
         String(format: "%04x:%04x", vendorID, productID)
     }
 
-    /// Records (upserts) the chosen logical size for a display.
-    public func record(vendorID: UInt32, productID: UInt32, width: Int, height: Int) throws {
+    /// Records (upserts) the chosen logical size (and refresh rate) for a
+    /// display. Non-positive `hz` values (virtual displays report 0 Hz) are
+    /// normalized to nil so a reconnect never hunts for a nonexistent 0Hz mode.
+    public func record(vendorID: UInt32, productID: UInt32, width: Int, height: Int, hz: Int?) throws {
         var all = readAll()
-        all[Self.key(vendorID: vendorID, productID: productID)] = Selection(width: width, height: height)
+        let normalizedHz = hz.flatMap { $0 > 0 ? $0 : nil }
+        all[Self.key(vendorID: vendorID, productID: productID)] =
+            Selection(width: width, height: height, hz: normalizedHz)
         try writeAll(all)
     }
 

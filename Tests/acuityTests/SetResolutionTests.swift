@@ -80,4 +80,77 @@ final class SetResolutionTests: XCTestCase {
         )
         XCTAssertEqual(idx, 0, "With no 1× variant, falls back to the HiDPI mode")
     }
+
+    // MARK: - targetHz (remembered refresh rate)
+
+    func test_selectModeIndex_targetHz_picksExactHz_overHigherHz() {
+        let modes = [
+            ModeCandidate(width: 1600, height: 900, isHiDPI: true, refreshRate: 144, usableForDesktopGUI: true),
+            ModeCandidate(width: 1600, height: 900, isHiDPI: true, refreshRate: 120, usableForDesktopGUI: true),
+            ModeCandidate(width: 1600, height: 900, isHiDPI: true, refreshRate: 60,  usableForDesktopGUI: true),
+        ]
+        let result = ResolutionController.selectModeIndex(
+            targetWidth: 1600, targetHeight: 900, targetHz: 120, from: modes
+        )
+        XCTAssertEqual(result.index, 1, "targetHz:120 must pick the 120Hz mode, not the 144Hz tiebreak winner")
+        XCTAssertFalse(result.hzFellBack)
+    }
+
+    func test_selectModeIndex_targetHzAbsent_fallsBackToResPool_andReportsIt() {
+        // Remembered 144Hz, but only 60/120 available right now (e.g. transient
+        // dock enumeration) → apply the resolution anyway at the pool's best Hz
+        // and surface hzFellBack so the caller can log.
+        let modes = [
+            ModeCandidate(width: 1600, height: 900, isHiDPI: true, refreshRate: 60,  usableForDesktopGUI: true),
+            ModeCandidate(width: 1600, height: 900, isHiDPI: true, refreshRate: 120, usableForDesktopGUI: true),
+        ]
+        let result = ResolutionController.selectModeIndex(
+            targetWidth: 1600, targetHeight: 900, targetHz: 144, from: modes
+        )
+        XCTAssertEqual(result.index, 1, "Hz miss must fall back to the res pool's best (120Hz)")
+        XCTAssertTrue(result.hzFellBack, "Fallback must be reported so callers can log it")
+    }
+
+    func test_selectModeIndex_targetHz_resMiss_returnsNil_notFellBack() {
+        let result = ResolutionController.selectModeIndex(
+            targetWidth: 3000, targetHeight: 2000, targetHz: 120, from: liveModes()
+        )
+        XCTAssertNil(result.index, "A resolution miss still returns nil — hz never rescues a res miss")
+        XCTAssertFalse(result.hzFellBack)
+    }
+
+    func test_selectModeIndex_targetHz_restrictsBeforeHiDPITiebreak() {
+        // Pin the ordering: the Hz restriction happens FIRST, then the HiDPI
+        // preference applies within the Hz-matching pool. An exact-Hz 1× mode
+        // beats an off-Hz HiDPI mode — the pinned Hz is an explicit request.
+        let modes = [
+            ModeCandidate(width: 1600, height: 900, isHiDPI: true,  refreshRate: 144, usableForDesktopGUI: true),
+            ModeCandidate(width: 1600, height: 900, isHiDPI: false, refreshRate: 120, usableForDesktopGUI: true),
+        ]
+        let result = ResolutionController.selectModeIndex(
+            targetWidth: 1600, targetHeight: 900, targetHz: 120, preferHiDPI: true, from: modes
+        )
+        XCTAssertEqual(result.index, 1, "Exact-Hz 1× wins over off-Hz HiDPI (Hz pool restricts first)")
+        XCTAssertFalse(result.hzFellBack)
+    }
+
+    func test_selectModeIndex_targetHzZero_treatedAsUnpinned() {
+        // Virtual displays report 0 Hz; a stored/passed 0 must behave like nil.
+        let result = ResolutionController.selectModeIndex(
+            targetWidth: 1920, targetHeight: 1080, targetHz: 0, from: liveModes()
+        )
+        XCTAssertEqual(result.index, 1, "Hz 0 is unpinned — same pick as the no-Hz path")
+        XCTAssertFalse(result.hzFellBack, "Hz 0 must not count as a fallback")
+    }
+
+    func test_selectModeIndex_targetHzNil_matchesLegacyBehavior() {
+        let legacy = ResolutionController.selectModeIndex(
+            targetWidth: 1920, targetHeight: 1080, from: liveModes()
+        )
+        let result = ResolutionController.selectModeIndex(
+            targetWidth: 1920, targetHeight: 1080, targetHz: nil, from: liveModes()
+        )
+        XCTAssertEqual(result.index, legacy)
+        XCTAssertFalse(result.hzFellBack)
+    }
 }

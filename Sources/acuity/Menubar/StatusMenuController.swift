@@ -131,23 +131,27 @@ public final class StatusMenuController: NSObject {
         let store = SelectionStore.standard()
         var applied = 0
         for d in externals {
-            let target: (width: Int, height: Int)?
+            let target: (width: Int, height: Int, hz: Int?)?
             if let sel = store.selection(vendorID: d.vendorID, productID: d.productID) {
-                target = (sel.width, sel.height)
+                target = (sel.width, sel.height, sel.hz)
             } else if let largest = ResolutionController.hiDPISizes(for: d.displayID)
                 .first(where: { $0.width < d.nativeWidth }) {
-                target = (largest.width, largest.height)
+                target = (largest.width, largest.height, nil)
             } else {
                 target = nil
             }
             guard let t = target else { continue }
             do {
-                _ = try ResolutionController.apply(
-                    width: t.width, height: t.height, preferHiDPI: true,
+                let (mode, _) = try ResolutionController.apply(
+                    width: t.width, height: t.height, hz: t.hz, preferHiDPI: true,
                     toDisplayID: d.displayID, displayName: d.name
                 )
                 applied += 1
-                try? store.record(vendorID: d.vendorID, productID: d.productID, width: t.width, height: t.height)
+                // Record the Hz actually applied (record() maps 0 Hz → nil).
+                try? store.record(
+                    vendorID: d.vendorID, productID: d.productID,
+                    width: t.width, height: t.height, hz: Int(mode.refreshRate.rounded())
+                )
             } catch {
                 // Modes not present yet (needs reboot); leave it for the daemon.
             }

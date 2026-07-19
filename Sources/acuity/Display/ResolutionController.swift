@@ -99,40 +99,79 @@ enum ResolutionController {
         preferHiDPI: Bool = true,
         from modes: [ModeCandidate]
     ) -> Int? {
+        selectModeIndex(
+            targetWidth: targetWidth, targetHeight: targetHeight,
+            targetHz: nil, preferHiDPI: preferHiDPI, from: modes
+        ).index
+    }
+
+    /// Hz-aware variant. When `targetHz` is set (and > 0 — virtual displays
+    /// report 0 Hz, treated as unpinned), the resolution-matched pool is first
+    /// restricted to modes at exactly that refresh rate; the HiDPI/refresh
+    /// tiebreaks then run within that pool. If no mode matches the pinned Hz,
+    /// the full resolution pool is used instead (the pre-Hz behavior) and
+    /// `hzFellBack` is true so callers can log — an Hz miss never turns a
+    /// resolvable resolution into a failure.
+    static func selectModeIndex(
+        targetWidth: Int,
+        targetHeight: Int,
+        targetHz: Int?,
+        preferHiDPI: Bool = true,
+        from modes: [ModeCandidate]
+    ) -> (index: Int?, hzFellBack: Bool) {
         let matches = modes.enumerated().filter {
             $0.element.width == targetWidth
                 && $0.element.height == targetHeight
                 && $0.element.usableForDesktopGUI
         }
-        guard !matches.isEmpty else { return nil }
+        guard !matches.isEmpty else { return (nil, false) }
+
+        var pool = matches
+        var hzFellBack = false
+        if let hz = targetHz, hz > 0 {
+            let hzMatches = matches.filter { $0.element.refreshRate == hz }
+            if hzMatches.isEmpty {
+                hzFellBack = true
+            } else {
+                pool = hzMatches
+            }
+        }
 
         if preferHiDPI {
-            return matches.max { a, b in
+            let index = pool.max { a, b in
                 if a.element.isHiDPI != b.element.isHiDPI {
                     return b.element.isHiDPI   // a < b when b is HiDPI and a is not
                 }
                 return a.element.refreshRate < b.element.refreshRate
             }?.offset
+            return (index, hzFellBack)
         } else {
-            let oneX = matches.filter { !$0.element.isHiDPI }
-            let pool = oneX.isEmpty ? matches : oneX
-            return pool.max { $0.element.refreshRate < $1.element.refreshRate }?.offset
+            let oneX = pool.filter { !$0.element.isHiDPI }
+            let subPool = oneX.isEmpty ? pool : oneX
+            let index = subPool.max { $0.element.refreshRate < $1.element.refreshRate }?.offset
+            return (index, hzFellBack)
         }
     }
 
     // MARK: - Apply
 
     /// Switches the display to the best mode matching the requested logical
-    /// size. Persists across reboot (like System Settings). No sudo required —
-    /// the console user may reconfigure their own displays.
+    /// size (and, when `hz` is set, refresh rate). Persists across reboot
+    /// (like System Settings). No sudo required — the console user may
+    /// reconfigure their own displays.
+    ///
+    /// Throws only on a *resolution* miss. An `hz` miss falls back to the best
+    /// resolution-matched mode and reports `hzFellBack: true` instead — a
+    /// remembered refresh rate must never make a reconnect re-apply fail.
     @discardableResult
     static func apply(
         width: Int,
         height: Int,
+        hz: Int? = nil,
         preferHiDPI: Bool = true,
         toDisplayID displayID: CGDirectDisplayID,
         displayName: String
-    ) throws -> CGDisplayMode {
+    ) throws -> (mode: CGDisplayMode, hzFellBack: Bool) {
         let modes = allModes(for: displayID)
         let candidates = modes.map {
             ModeCandidate(
@@ -142,9 +181,11 @@ enum ResolutionController {
                 usableForDesktopGUI: $0.isUsableForDesktopGUI()
             )
         }
-        guard let index = selectModeIndex(
-            targetWidth: width, targetHeight: height, preferHiDPI: preferHiDPI, from: candidates
-        ) else {
+        let selection = selectModeIndex(
+            targetWidth: width, targetHeight: height, targetHz: hz,
+            preferHiDPI: preferHiDPI, from: candidates
+        )
+        guard let index = selection.index else {
             throw AcuityError.resolutionNotAvailable("\(width)×\(height) on \(displayName)")
         }
         let mode = modes[index]
@@ -162,6 +203,6 @@ enum ResolutionController {
         guard completeErr == .success else {
             throw AcuityError.setResolutionFailed(displayName, completeErr.rawValue)
         }
-        return mode
+        return (mode, selection.hzFellBack)
     }
 }

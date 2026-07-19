@@ -1,6 +1,6 @@
 # Acuity
 
-> **Active.** Acuity provides supersampled HiDPI for standard-density QHD external monitors. It remembers your chosen "looks like" size per display and re-applies it on reconnect and at login via a small open-source LaunchAgent - no SIP disable, no private entitlements. The daemon is a plain plist you can inspect, edit, or remove.
+> **Active.** Acuity provides supersampled HiDPI for standard-density QHD external monitors. It remembers your chosen "looks like" size and refresh rate per display and re-applies them on reconnect and at login via a small open-source LaunchAgent - no SIP disable, no private entitlements. The daemon is a plain plist you can inspect, edit, or remove.
 
 Native HiDPI scaling for external monitors on macOS. No SIP. No private entitlements. Open source.
 
@@ -14,7 +14,7 @@ macOS enables HiDPI ("Retina") scaling based on a display's **pixel density, not
 
 The fix is the long-established EDID-override technique: write a plist to `/Library/Displays/Contents/Resources/Overrides/` that macOS reads at boot to expose additional **supersampled** HiDPI modes (rendered at 2× and downsampled to the panel). No SIP disable, no kernel extensions, no private entitlements.
 
-Acuity automates the override generation, switches modes live via public CoreGraphics APIs, and remembers your chosen mode so a LaunchAgent re-applies it on reconnect and at login. The menubar and CLI are resolution-focused.
+Acuity automates the override generation, switches modes live via public CoreGraphics APIs, and remembers your chosen mode (size and refresh rate) so a LaunchAgent re-applies it on reconnect and at login. If the remembered refresh rate isn't available at reconnect time, the resolution is still applied at the best available rate and the fallback is logged. The menubar and CLI are resolution-focused.
 
 > **Sharpness ceiling.** HiDPI improves anti-aliasing but cannot exceed the panel's physical pixel density. On a ~109 PPI panel it's clearly smoother than blurry scaling, but it is not true Retina — that requires a denser panel (4K ≈ 163 PPI, 5K ≈ 218 PPI), which then needs no override at all. Acuity helps most on sub-Retina panels where you want larger-but-sharp UI.
 
@@ -69,8 +69,9 @@ Only the `enable` and `reboot` steps need `sudo`. Switching resolutions live wit
 | `acuity enable --all --preset all` | Full resolution ladder |
 | `acuity enable --display 0xVID:0xPID` | Enable for a specific display |
 | `acuity disable --all` | Remove override plists |
-| `acuity set-resolution --all --width W --height H` | Switch live to a HiDPI "looks like" size — no reboot, no sudo |
-| `acuity set-resolution --all --width W --height H --no-hidpi` | Switch to the 1× (soft) variant — shows the difference HiDPI makes |
+| `acuity set-resolution --all --width W --height H` | Switch live to a HiDPI "looks like" size - no reboot, no sudo |
+| `acuity set-resolution --all --width W --height H --hz N` | Same, pinned to a specific refresh rate (falls back to the best available rate if absent) |
+| `acuity set-resolution --all --width W --height H --no-hidpi` | Switch to the 1× (soft) variant - shows the difference HiDPI makes |
 | `acuity set-resolution --list` | List available HiDPI "looks like" sizes with zoom % |
 | `acuity install` | Install the LaunchAgent (menubar app, auto-restarts) |
 | `acuity uninstall` | Remove the LaunchAgent |
@@ -95,6 +96,7 @@ Display 10ac:41da [10ac:41da] — Unknown
   Resolution:  2560×1440 @ 144Hz
   HiDPI plist: ✓ installed
   Current mode: ✓ HiDPI active (1680×945 @2× @ 144Hz)
+  Remembered:  1680×945 @ 144Hz
 ```
 
 ## How it works
