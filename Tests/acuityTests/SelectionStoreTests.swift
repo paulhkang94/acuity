@@ -25,10 +25,57 @@ final class SelectionStoreTests: XCTestCase {
 
     func test_record_thenSelection_roundTrips() throws {
         let store = SelectionStore(fileURL: tempFile)
-        try store.record(vendorID: 0x10ac, productID: 0x41da, width: 1600, height: 900)
+        try store.record(vendorID: 0x10ac, productID: 0x41da, width: 1600, height: 900, hz: nil)
 
         XCTAssertEqual(store.selection(vendorID: 0x10ac, productID: 0x41da),
                        SelectionStore.Selection(width: 1600, height: 900))
+    }
+
+    // MARK: - Refresh-rate (Hz) persistence
+
+    func test_record_withHz_roundTrips() throws {
+        let store = SelectionStore(fileURL: tempFile)
+        try store.record(vendorID: 0x10ac, productID: 0x41da, width: 1600, height: 900, hz: 120)
+
+        XCTAssertEqual(store.selection(vendorID: 0x10ac, productID: 0x41da),
+                       SelectionStore.Selection(width: 1600, height: 900, hz: 120))
+    }
+
+    /// Backward-compat contract: a store written by a pre-Hz binary (no "hz"
+    /// key) must decode with `hz == nil` — meaning "apply resolution, leave the
+    /// refresh rate alone", exactly the old behavior.
+    func test_legacyFileWithoutHz_decodesWithNilHz() throws {
+        try FileManager.default.createDirectory(
+            at: tempFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let legacyJSON = #"{"10ac:41da": {"width": 1600, "height": 900}}"#
+        try Data(legacyJSON.utf8).write(to: tempFile)
+
+        let store = SelectionStore(fileURL: tempFile)
+        let sel = store.selection(vendorID: 0x10ac, productID: 0x41da)
+        XCTAssertEqual(sel, SelectionStore.Selection(width: 1600, height: 900, hz: nil))
+        XCTAssertNil(sel?.hz)
+    }
+
+    /// Integration: the "hz" key must actually land on disk — the daemon reads
+    /// this file fresh in a separate process.
+    func test_record_withHz_writesHzKeyToDisk() throws {
+        let store = SelectionStore(fileURL: tempFile)
+        try store.record(vendorID: 0x10ac, productID: 0x41da, width: 1600, height: 900, hz: 120)
+
+        let data = try Data(contentsOf: tempFile)
+        let raw = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: data) as? [String: [String: Int]])
+        XCTAssertEqual(raw["10ac:41da"]?["hz"], 120)
+    }
+
+    /// Virtual displays report 0 Hz; storing 0 would make reconnects hunt for
+    /// a nonexistent 0Hz mode. record() must normalize non-positive Hz to nil.
+    func test_record_hzZero_normalizedToNil() throws {
+        let store = SelectionStore(fileURL: tempFile)
+        try store.record(vendorID: 0x10ac, productID: 0x41da, width: 1600, height: 900, hz: 0)
+
+        let sel = store.selection(vendorID: 0x10ac, productID: 0x41da)
+        XCTAssertEqual(sel, SelectionStore.Selection(width: 1600, height: 900, hz: nil))
     }
 
     func test_selection_unknownDisplay_returnsNil() {
@@ -38,8 +85,8 @@ final class SelectionStoreTests: XCTestCase {
 
     func test_record_overwrites_latestWins() throws {
         let store = SelectionStore(fileURL: tempFile)
-        try store.record(vendorID: 0x10ac, productID: 0x41da, width: 1680, height: 945)
-        try store.record(vendorID: 0x10ac, productID: 0x41da, width: 1600, height: 900)
+        try store.record(vendorID: 0x10ac, productID: 0x41da, width: 1680, height: 945, hz: nil)
+        try store.record(vendorID: 0x10ac, productID: 0x41da, width: 1600, height: 900, hz: nil)
 
         XCTAssertEqual(store.selection(vendorID: 0x10ac, productID: 0x41da),
                        SelectionStore.Selection(width: 1600, height: 900))
@@ -49,7 +96,7 @@ final class SelectionStoreTests: XCTestCase {
     /// method returned — a daemon in a separate process reads this file fresh.
     func test_record_writesReadableJSONToDisk() throws {
         let store = SelectionStore(fileURL: tempFile)
-        try store.record(vendorID: 0x10ac, productID: 0x41da, width: 1600, height: 900)
+        try store.record(vendorID: 0x10ac, productID: 0x41da, width: 1600, height: 900, hz: nil)
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: tempFile.path),
                       "record() must persist a file to disk")
@@ -60,8 +107,8 @@ final class SelectionStoreTests: XCTestCase {
 
     func test_distinctDisplays_areIndependent() throws {
         let store = SelectionStore(fileURL: tempFile)
-        try store.record(vendorID: 0x10ac, productID: 0x41da, width: 1600, height: 900)
-        try store.record(vendorID: 0x0610, productID: 0xa034, width: 1440, height: 810)
+        try store.record(vendorID: 0x10ac, productID: 0x41da, width: 1600, height: 900, hz: nil)
+        try store.record(vendorID: 0x0610, productID: 0xa034, width: 1440, height: 810, hz: nil)
 
         XCTAssertEqual(store.selection(vendorID: 0x10ac, productID: 0x41da),
                        SelectionStore.Selection(width: 1600, height: 900))

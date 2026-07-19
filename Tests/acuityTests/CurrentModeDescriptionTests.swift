@@ -57,4 +57,19 @@ final class CurrentModeDescriptionTests: XCTestCase {
         )
         XCTAssertFalse(desc.contains("Hz"), "No refresh rate must mean no 'Hz' in output, got: \(desc)")
     }
+
+    // MARK: - Remembered-selection line
+
+    func test_describeSelection_withHz_showsRate() {
+        let desc = StatusCommand.describeSelection(
+            SelectionStore.Selection(width: 1600, height: 900, hz: 120))
+        XCTAssertEqual(desc, "1600×900 @ 120Hz")
+    }
+
+    func test_describeSelection_withoutHz_omitsRate() {
+        // Legacy (pre-Hz) entry: resolution only, refresh rate left alone.
+        let desc = StatusCommand.describeSelection(
+            SelectionStore.Selection(width: 1600, height: 900))
+        XCTAssertEqual(desc, "1600×900")
+    }
 }

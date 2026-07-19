@@ -99,8 +99,9 @@ public final class ReconfigurationWatcher {
 
         // Prefer the user's remembered choice over the largest-HiDPI default.
         if let sel = selectionStore.selection(vendorID: vendorID, productID: productID) {
+            let hzSuffix = sel.hz.map { " @ \($0)Hz" } ?? ""
             fputs(
-                "[acuity] Override found — applying remembered \(sel.width)×\(sel.height) for display \(displayID).\n",
+                "[acuity] Override found — applying remembered \(sel.width)×\(sel.height)\(hzSuffix) for display \(displayID).\n",
                 stderr
             )
             applyRecordedSelection(
@@ -120,20 +121,36 @@ public final class ReconfigurationWatcher {
 
     // MARK: - Remembered-selection application
 
-    /// Re-applies a remembered "looks like" size via the public CoreGraphics
-    /// path (the same one `set-resolution` uses). Falls back to the largest
-    /// HiDPI mode if that specific size can't be applied.
+    /// Re-applies a remembered "looks like" size (and refresh rate, when one
+    /// was recorded) via the public CoreGraphics path (the same one
+    /// `set-resolution` uses). An unavailable remembered Hz never fails the
+    /// re-apply — the resolution lands at the best available rate and the
+    /// fallback is logged. Falls back to the largest HiDPI mode only if the
+    /// *resolution* itself can't be applied.
     private func applyRecordedSelection(
         _ sel: SelectionStore.Selection,
         displayID: CGDirectDisplayID,
         displayName: String
     ) {
         do {
-            _ = try ResolutionController.apply(
-                width: sel.width, height: sel.height, preferHiDPI: true,
+            let (mode, hzFellBack) = try ResolutionController.apply(
+                width: sel.width, height: sel.height, hz: sel.hz, preferHiDPI: true,
                 toDisplayID: displayID, displayName: displayName
             )
-            fputs("[acuity] Re-applied remembered \(sel.width)×\(sel.height) for \(displayName).\n", stderr)
+            let appliedHz = Int(mode.refreshRate.rounded())
+            if hzFellBack, let rememberedHz = sel.hz {
+                fputs(
+                    "[acuity] remembered \(rememberedHz)Hz unavailable — applied "
+                    + "\(sel.width)×\(sel.height) at \(appliedHz)Hz for \(displayName).\n",
+                    stderr
+                )
+            } else {
+                fputs(
+                    "[acuity] Re-applied remembered \(sel.width)×\(sel.height)"
+                    + "\(sel.hz.map { " @ \($0)Hz" } ?? "") for \(displayName).\n",
+                    stderr
+                )
+            }
         } catch {
             fputs(
                 "[acuity] Could not apply remembered \(sel.width)×\(sel.height) for \(displayName): "

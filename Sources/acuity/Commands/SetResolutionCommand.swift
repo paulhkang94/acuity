@@ -20,6 +20,9 @@ struct SetResolutionCommand: ParsableCommand {
     @Option(name: .long, help: "Logical ('looks like') height to switch to.")
     var height: Int?
 
+    @Option(name: .long, help: "Pin a specific refresh rate in Hz (e.g. 120). Falls back to the best available rate if absent.")
+    var hz: Int?
+
     @Flag(name: .long, help: "Use the 1× (non-HiDPI) variant — softer; shows what you get without acuity.")
     var noHidpi: Bool = false
 
@@ -49,19 +52,28 @@ struct SetResolutionCommand: ParsableCommand {
         let store = SelectionStore.standard()
 
         for info in targets {
-            let mode = try ResolutionController.apply(
-                width: width, height: height, preferHiDPI: !noHidpi,
+            let (mode, hzFellBack) = try ResolutionController.apply(
+                width: width, height: height, hz: hz, preferHiDPI: !noHidpi,
                 toDisplayID: info.displayID, displayName: info.name
             )
+            let appliedHz = Int(mode.refreshRate.rounded())
+            if hzFellBack, let requestedHz = hz {
+                fputs("warning: \(requestedHz)Hz not available at \(width)×\(height) on \(info.name) — applied \(appliedHz)Hz instead\n", stderr)
+            }
             let kind = mode.pixelWidth > mode.width ? "HiDPI, sharp" : "1×, soft"
             print("✓ \(info.name) → looks like \(mode.width)×\(mode.height) "
-                + "(renders \(mode.pixelWidth)×\(mode.pixelHeight) @\(Int(mode.refreshRate.rounded()))Hz · \(kind))")
+                + "(renders \(mode.pixelWidth)×\(mode.pixelHeight) @\(appliedHz)Hz · \(kind))")
 
             // Only remember HiDPI selections — a 1× (--no-hidpi) pick is a
             // one-off comparison, not a preference worth restoring on boot.
+            // Hz is captured from the mode actually applied (record() maps a
+            // reported 0 Hz — virtual displays — to nil).
             if !noHidpi {
                 do {
-                    try store.record(vendorID: info.vendorID, productID: info.productID, width: width, height: height)
+                    try store.record(
+                        vendorID: info.vendorID, productID: info.productID,
+                        width: width, height: height, hz: appliedHz
+                    )
                 } catch {
                     fputs("warning: could not remember resolution choice for \(info.name): \(error)\n", stderr)
                 }

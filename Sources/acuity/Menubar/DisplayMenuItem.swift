@@ -137,17 +137,19 @@ private final class ResolutionTarget: NSObject {
     @objc func selectResolution(_ sender: NSMenuItem) {
         guard let sel = sender.representedObject as? ResolutionSelection else { return }
         do {
-            try ResolutionController.apply(
+            let (mode, _) = try ResolutionController.apply(
                 width: sel.width, height: sel.height, preferHiDPI: sel.preferHiDPI,
                 toDisplayID: sel.displayID, displayName: sel.displayName
             )
-            // Remember HiDPI picks so the daemon restores them on reboot/reconnect.
+            // Remember HiDPI picks so the daemon restores them on reboot/reconnect,
+            // including the Hz actually applied (record() maps 0 Hz → nil).
             if sel.preferHiDPI {
                 let vendorID = UInt32(CGDisplayVendorNumber(sel.displayID))
                 let productID = UInt32(CGDisplayModelNumber(sel.displayID))
                 try? SelectionStore.standard().record(
                     vendorID: vendorID, productID: productID,
-                    width: sel.width, height: sel.height
+                    width: sel.width, height: sel.height,
+                    hz: Int(mode.refreshRate.rounded())
                 )
             }
         } catch {
