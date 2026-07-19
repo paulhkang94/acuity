@@ -19,6 +19,7 @@ scripts/cl-*.sh
 scripts/cl-*.txt
 scripts/claude-*.sh
 scripts/claude_*.py
+.last-verify-at
 .github/workflows/loop-tests.yml
 __pycache__/
 *.pyc
