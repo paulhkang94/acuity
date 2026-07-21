@@ -48,6 +48,11 @@ Repo-specific pitfalls, API quirks, and configuration gotchas discovered during 
 **Gotcha:** `notarytool submit --wait` can take 30-90 minutes when Apple's notarization service is backed up. GitHub Actions default job timeout is 6 hours per job, but the step-level timeout defaults to 360 minutes. However, if you set a lower `timeout-minutes` in the step, `--wait` will be killed mid-submission. Pattern: explicitly set `timeout-minutes: 120` (2 hours) on any step using `notarytool --wait`. Also: always run `notarytool history --latest 1` after submission to verify the job actually completed (if `--wait` times out, the submission may still be in-progress server-side). For releases, consider submitting without `--wait` and polling status in a separate step with exponential backoff.
 **Tags:** acuity, notarization, notarytool, ci, github-actions, timeout, release-pipeline
 
+> **DDC feature RETIRED (annotated 2026-07-21, S164):** the DDC/brightness
+> entries below reference `Sources/acuity/DDC/` files stripped from the
+> codebase (CLAUDE.md Removed Features forbids reintroduction). File pointers
+> resolve only in git history; entries kept as historical record.
+
 ### macOS 26: IOAVService.framework removed — use DisplayTransportServices.framework
 
 **Date:** 2026-03-26
