@@ -24,8 +24,6 @@ public final class StatusMenuController: NSObject {
 
     /// Rebuilds the NSMenu from current DisplayEnumerator.allDisplays().
     public func rebuildMenu() {
-        displays = DisplayEnumerator.allDisplays()
-
         let menu = NSMenu(title: "acuity")
         menu.delegate = self
 
@@ -37,6 +35,11 @@ public final class StatusMenuController: NSObject {
     // MARK: - Private
 
     private func populateMenu(_ menu: NSMenu) {
+        // Re-enumerate on every open: hotplugged displays must appear, and
+        // stale per-session CGDirectDisplayIDs from disconnected displays must
+        // never linger in representedObjects (a reassigned ID could target the
+        // wrong display). The menu already pays O(displays × modes) per open.
+        displays = DisplayEnumerator.allDisplays()
         menu.removeAllItems()
 
         let externalDisplays = displays.filter { !$0.isBuiltIn }

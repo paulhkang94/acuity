@@ -14,6 +14,10 @@ public final class ReconfigurationWatcher {
     private var isWatching = false
     private let selectionStore: SelectionStore
 
+    /// Called on the main queue after any display topology change (add or
+    /// remove), so UI owners (the menubar) can refresh their display lists.
+    public var onDisplayChange: (() -> Void)?
+
     // MARK: - Lifecycle
 
     /// - Parameter selectionStore: remembers the user's chosen resolution per
@@ -32,11 +36,14 @@ public final class ReconfigurationWatcher {
 
         CGDisplayRegisterReconfigurationCallback(
             { displayID, flags, userInfo in
-                guard flags.contains(.addFlag) else { return }
+                guard flags.contains(.addFlag) || flags.contains(.removeFlag) else { return }
                 let watcher = Unmanaged<ReconfigurationWatcher>
                     .fromOpaque(userInfo!)
                     .takeUnretainedValue()
-                watcher.handleDisplayAdded(displayID: displayID)
+                if flags.contains(.addFlag) {
+                    watcher.handleDisplayAdded(displayID: displayID)
+                }
+                watcher.notifyDisplayChange()
             },
             Unmanaged.passUnretained(self).toOpaque()
         )
@@ -44,8 +51,13 @@ public final class ReconfigurationWatcher {
         fputs("[acuity] ReconfigurationWatcher started.\n", stderr)
 
         // Cold-boot path: displays already attached at login never fire the
-        // .addFlag callback, so re-apply each remembered choice now.
-        applyRecordedSelectionsToConnectedDisplays()
+        // .addFlag callback, so re-apply each remembered choice. Runs off the
+        // calling thread: at daemon start this otherwise blocks the launch
+        // path (status item appearance) behind one WindowServer transaction
+        // per remembered display.
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            self?.applyRecordedSelectionsToConnectedDisplays()
+        }
     }
 
     /// Removes the display reconfiguration callback.
@@ -62,6 +74,14 @@ public final class ReconfigurationWatcher {
     }
 
     // MARK: - Display-add handler
+
+    /// Hops to the main queue and fires `onDisplayChange` so UI owners can
+    /// refresh after an add OR remove event.
+    private func notifyDisplayChange() {
+        DispatchQueue.main.async { [weak self] in
+            self?.onDisplayChange?()
+        }
+    }
 
     private func handleDisplayAdded(displayID: CGDirectDisplayID) {
         let vendorID  = UInt32(CGDisplayVendorNumber(displayID))

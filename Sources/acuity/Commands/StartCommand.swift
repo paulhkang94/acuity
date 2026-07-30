@@ -36,6 +36,9 @@ struct StartCommand: ParsableCommand {
 
         // Start display reconfiguration watcher (same functionality as `acuity daemon`)
         let watcher = ReconfigurationWatcher(selectionStore: .standard())
+        // Hotplug -> menubar: refresh the display list on add/remove so the
+        // menu never shows a stale topology (delivered on the main queue).
+        watcher.onDisplayChange = { controller.rebuildMenu() }
         watcher.startWatching()
 
         DispatchQueue.main.async {
