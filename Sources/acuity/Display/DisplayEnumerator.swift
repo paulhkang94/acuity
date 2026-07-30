@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 import IOKit
@@ -34,7 +35,14 @@ public struct DisplayEnumerator {
         guard CGGetOnlineDisplayList(32, &displayIDs, &count) == .success else {
             return []
         }
-        return displayIDs.prefix(Int(count)).map { displayInfo(for: $0) }
+        // One IOKit pass and one NSScreen pass for the whole topology - the
+        // previous shape re-ran the IODisplayConnect service scan per display,
+        // and that class is absent entirely on Apple Silicon (always-miss).
+        let ioMap = ioKitInfoMap()
+        let screenNames = screenNamesByDisplayID()
+        return displayIDs.prefix(Int(count)).map {
+            displayInfo(for: $0, ioMap: ioMap, screenNames: screenNames)
+        }
     }
 
     /// Returns only non-built-in (external) displays.
@@ -44,11 +52,17 @@ public struct DisplayEnumerator {
 
     // MARK: - Per-display resolution
 
-    private static func displayInfo(for displayID: CGDirectDisplayID) -> DisplayInfo {
+    private static func displayInfo(
+        for displayID: CGDirectDisplayID,
+        ioMap: [UInt64: IOKitDisplayInfo],
+        screenNames: [CGDirectDisplayID: String]
+    ) -> DisplayInfo {
         let isBuiltIn = CGDisplayIsBuiltin(displayID) != 0
         let (nativeWidth, nativeHeight) = nativeResolution(for: displayID)
+        let vendorID = UInt32(CGDisplayVendorNumber(displayID))
+        let productID = UInt32(CGDisplayModelNumber(displayID))
 
-        if let ioInfo = ioKitInfo(for: displayID) {
+        if let ioInfo = ioMap[vendorProductKey(vendorID, productID)] {
             return DisplayInfo(
                 vendorID: ioInfo.vendorID,
                 productID: ioInfo.productID,
@@ -61,19 +75,34 @@ public struct DisplayEnumerator {
             )
         }
 
-        // Fallback: use CGDisplay-derived values only
-        let vendorID = UInt32(CGDisplayVendorNumber(displayID))
-        let productID = UInt32(CGDisplayModelNumber(displayID))
+        // Fallback: CGDisplay-derived values, with the real panel name from
+        // NSScreen when available - on Apple Silicon the IOKit path never
+        // matches, which used to leave every display named "Display %04x:%04x".
+        let name = screenNames[displayID]
+            ?? "Display \(String(format: "%04x:%04x", vendorID, productID))"
         return DisplayInfo(
             vendorID: vendorID,
             productID: productID,
             displayID: displayID,
-            name: "Display \(String(format: "%04x:%04x", vendorID, productID))",
+            name: name,
             nativeWidth: nativeWidth,
             nativeHeight: nativeHeight,
             isBuiltIn: isBuiltIn,
             connectionType: .unknown
         )
+    }
+
+    /// NSScreen's localized display names keyed by CGDirectDisplayID - the
+    /// only public name source on Apple Silicon (no IODisplayConnect there).
+    private static func screenNamesByDisplayID() -> [CGDirectDisplayID: String] {
+        var out: [CGDirectDisplayID: String] = [:]
+        for screen in NSScreen.screens {
+            let key = NSDeviceDescriptionKey("NSScreenNumber")
+            if let num = screen.deviceDescription[key] as? NSNumber {
+                out[CGDirectDisplayID(num.uint32Value)] = screen.localizedName
+            }
+        }
+        return out
     }
 
     // MARK: - Native resolution detection
@@ -150,17 +179,23 @@ public struct DisplayEnumerator {
         let connectionType: ConnectionType
     }
 
-    private static func ioKitInfo(for displayID: CGDirectDisplayID) -> IOKitDisplayInfo? {
-        let vendorID = UInt32(CGDisplayVendorNumber(displayID))
-        let productID = UInt32(CGDisplayModelNumber(displayID))
+    static func vendorProductKey(_ vendorID: UInt32, _ productID: UInt32) -> UInt64 {
+        (UInt64(vendorID) << 32) | UInt64(productID)
+    }
 
+    /// Builds the vendor:product → display-info map in ONE IODisplayConnect
+    /// pass. The previous per-display scan was O(displays × services) and, on
+    /// Apple Silicon, pure waste: that service class does not exist there
+    /// (`ioreg -c IODisplayConnect` returns nothing), so every scan missed.
+    private static func ioKitInfoMap() -> [UInt64: IOKitDisplayInfo] {
         let matching = IOServiceMatching("IODisplayConnect")
         var iterator: io_iterator_t = 0
         guard IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator) == KERN_SUCCESS else {
-            return nil
+            return [:]
         }
         defer { IOObjectRelease(iterator) }
 
+        var out: [UInt64: IOKitDisplayInfo] = [:]
         var service = IOIteratorNext(iterator)
         while service != 0 {
             defer {
@@ -174,22 +209,24 @@ public struct DisplayEnumerator {
 
             let entryVendor = info[kDisplayVendorID] as? UInt32 ?? 0
             let entryProduct = info[kDisplayProductID] as? UInt32 ?? 0
+            guard entryVendor != 0 || entryProduct != 0 else { continue }
 
-            guard entryVendor == vendorID, entryProduct == productID else {
-                continue
-            }
-
-            let name = extractDisplayName(from: info) ?? "Display \(String(format: "%04x:%04x", vendorID, productID))"
+            let name = extractDisplayName(from: info)
+                ?? "Display \(String(format: "%04x:%04x", entryVendor, entryProduct))"
             let connectionType = extractConnectionType(from: info, name: name)
-
-            return IOKitDisplayInfo(
-                vendorID: vendorID,
-                productID: productID,
-                name: name,
-                connectionType: connectionType
-            )
+            let key = vendorProductKey(entryVendor, entryProduct)
+            // First entry wins - duplicate vendor:product panels are
+            // indistinguishable at this layer either way.
+            if out[key] == nil {
+                out[key] = IOKitDisplayInfo(
+                    vendorID: entryVendor,
+                    productID: entryProduct,
+                    name: name,
+                    connectionType: connectionType
+                )
+            }
         }
-        return nil
+        return out
     }
 
     private static func extractDisplayName(from info: [String: Any]) -> String? {

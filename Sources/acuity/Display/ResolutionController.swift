@@ -40,9 +40,16 @@ enum ResolutionController {
 
     /// Deduped HiDPI "looks like" sizes, largest logical area first.
     static func hiDPISizes(for displayID: CGDirectDisplayID) -> [LooksLikeMode] {
+        hiDPISizes(from: allModes(for: displayID))
+    }
+
+    /// Overload over a pre-fetched mode list, so callers that need several
+    /// derived views (the menu builds HiDPI + 1× lists per open) pay for
+    /// `CGDisplayCopyAllDisplayModes` once instead of once per view.
+    static func hiDPISizes(from allModes: [CGDisplayMode]) -> [LooksLikeMode] {
         var seen = Set<String>()
         var out: [LooksLikeMode] = []
-        let modes = allModes(for: displayID)
+        let modes = allModes
             .filter { $0.pixelWidth > $0.width && $0.isUsableForDesktopGUI() }
             .sorted { $0.width * $0.height > $1.width * $1.height }
         for m in modes {
@@ -62,9 +69,14 @@ enum ResolutionController {
     /// These are the soft, panel-upscaled modes you get *without* acuity —
     /// used to demonstrate the sharpness difference at a matching size.
     static func oneXSizes(for displayID: CGDirectDisplayID, minWidth: Int = 1600) -> [LooksLikeMode] {
+        oneXSizes(from: allModes(for: displayID), minWidth: minWidth)
+    }
+
+    /// Overload over a pre-fetched mode list (see `hiDPISizes(from:)`).
+    static func oneXSizes(from allModes: [CGDisplayMode], minWidth: Int = 1600) -> [LooksLikeMode] {
         var seen = Set<String>()
         var out: [LooksLikeMode] = []
-        let modes = allModes(for: displayID)
+        let modes = allModes
             .filter { $0.pixelWidth == $0.width && $0.isUsableForDesktopGUI() && $0.width >= minWidth }
             .sorted { $0.width * $0.height > $1.width * $1.height }
         for m in modes {

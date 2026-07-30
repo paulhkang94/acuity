@@ -27,6 +27,22 @@ public final class ReconfigurationWatcher {
         self.selectionStore = selectionStore
     }
 
+    /// The single C callback registered with CoreGraphics. Stored once so
+    /// `stopWatching` can pass the IDENTICAL function pointer to the removal
+    /// call — distinct closure literals lower to distinct C thunks, and CG
+    /// matches removals on the (callback, userInfo) pair, so passing a fresh
+    /// literal makes removal a silent no-op.
+    private static let reconfigurationCallback: CGDisplayReconfigurationCallBack = { displayID, flags, userInfo in
+        guard flags.contains(.addFlag) || flags.contains(.removeFlag) else { return }
+        let watcher = Unmanaged<ReconfigurationWatcher>
+            .fromOpaque(userInfo!)
+            .takeUnretainedValue()
+        if flags.contains(.addFlag) {
+            watcher.handleDisplayAdded(displayID: displayID)
+        }
+        watcher.notifyDisplayChange()
+    }
+
     /// Registers the display reconfiguration callback.
     ///
     /// Safe to call multiple times — subsequent calls are no-ops.
@@ -34,19 +50,15 @@ public final class ReconfigurationWatcher {
         guard !isWatching else { return }
         isWatching = true
 
-        CGDisplayRegisterReconfigurationCallback(
-            { displayID, flags, userInfo in
-                guard flags.contains(.addFlag) || flags.contains(.removeFlag) else { return }
-                let watcher = Unmanaged<ReconfigurationWatcher>
-                    .fromOpaque(userInfo!)
-                    .takeUnretainedValue()
-                if flags.contains(.addFlag) {
-                    watcher.handleDisplayAdded(displayID: displayID)
-                }
-                watcher.notifyDisplayChange()
-            },
+        let err = CGDisplayRegisterReconfigurationCallback(
+            Self.reconfigurationCallback,
             Unmanaged.passUnretained(self).toOpaque()
         )
+        if err != .success {
+            fputs("[acuity] CGDisplayRegisterReconfigurationCallback failed: \(err.rawValue).\n", stderr)
+            isWatching = false
+            return
+        }
 
         fputs("[acuity] ReconfigurationWatcher started.\n", stderr)
 
@@ -60,15 +72,22 @@ public final class ReconfigurationWatcher {
         }
     }
 
-    /// Removes the display reconfiguration callback.
+    /// Removes the display reconfiguration callback. Must pass the same
+    /// (callback, userInfo) pair used at registration or CG leaves the old
+    /// registration live — with `passUnretained` userInfo that would turn the
+    /// next hotplug after deallocation into a use-after-free.
     public func stopWatching() {
         guard isWatching else { return }
         isWatching = false
 
-        CGDisplayRemoveReconfigurationCallback(
-            { _, _, _ in },
+        let err = CGDisplayRemoveReconfigurationCallback(
+            Self.reconfigurationCallback,
             Unmanaged.passUnretained(self).toOpaque()
         )
+        if err != .success {
+            fputs("[acuity] CGDisplayRemoveReconfigurationCallback failed: \(err.rawValue).\n", stderr)
+            return
+        }
 
         fputs("[acuity] ReconfigurationWatcher stopped.\n", stderr)
     }
