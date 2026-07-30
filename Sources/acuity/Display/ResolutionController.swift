@@ -190,6 +190,20 @@ enum ResolutionController {
         }
         let mode = modes[index]
 
+        // Short-circuit: when the display already sits in the selected mode
+        // (the common case at daemon start, since `.permanently` makes the OS
+        // itself restore it), skip the WindowServer transaction entirely - a
+        // redundant CGComplete can flash the display and blocks the caller.
+        if let current = CGDisplayCopyDisplayMode(displayID),
+            current.ioDisplayModeID == mode.ioDisplayModeID {
+            fputs(
+                "[acuity] \(displayName) already at \(width)×\(height)"
+                + "\(hz.map { " @ \($0)Hz" } ?? "") - skipping re-apply.\n",
+                stderr
+            )
+            return (current, selection.hzFellBack)
+        }
+
         var config: CGDisplayConfigRef?
         guard CGBeginDisplayConfiguration(&config) == .success else {
             throw AcuityError.setResolutionFailed(displayName, -1)
