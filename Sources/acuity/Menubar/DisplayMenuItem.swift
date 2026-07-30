@@ -47,6 +47,9 @@ public struct DisplayMenuItem {
     /// a few 1× ("soft") sizes so the HiDPI difference is visible at a matching
     /// scale. The active mode is checkmarked. Selecting an item switches live.
     private static func resolutionItem(for display: DisplayInfo) -> NSMenuItem {
+        // One CGDisplayCopyAllDisplayModes per display per menu open; the
+        // HiDPI and 1× views below both derive from this list.
+        let allModes = ResolutionController.allModes(for: display.displayID)
         let current = ResolutionController.currentMode(for: display.displayID)
         let curW = current?.width ?? 0
         let curH = current?.height ?? 0
@@ -67,7 +70,7 @@ public struct DisplayMenuItem {
             width: display.nativeWidth, height: display.nativeHeight, hidpi: true,
             checked: curW == display.nativeWidth && curH == display.nativeHeight)
 
-        let hiDPI = ResolutionController.hiDPISizes(for: display.displayID)
+        let hiDPI = ResolutionController.hiDPISizes(from: allModes)
             .filter { $0.width < display.nativeWidth }  // native already shown above
         if !hiDPI.isEmpty {
             let header = NSMenuItem(title: "HiDPI — sharp", action: nil, keyEquivalent: "")
@@ -83,7 +86,7 @@ public struct DisplayMenuItem {
 
         // Soft (1×) comparison — only sizes that also exist as HiDPI, top few.
         let hiDPIKeys = Set(hiDPI.map { "\($0.width)x\($0.height)" })
-        let soft = ResolutionController.oneXSizes(for: display.displayID)
+        let soft = ResolutionController.oneXSizes(from: allModes)
             .filter { hiDPIKeys.contains("\($0.width)x\($0.height)") }
             .prefix(3)
         if !soft.isEmpty {
