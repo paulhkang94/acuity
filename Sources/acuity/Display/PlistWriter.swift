@@ -8,6 +8,13 @@ import Foundation
 /// additional HiDPI modes.
 public struct PlistWriter {
 
+    // MARK: - Ownership marker
+
+    /// Marker value acuity stamps into every override it writes (the
+    /// `target-default-ppmm` key). `uninstall --clean` uses it to identify
+    /// acuity-owned files and leave overrides written by other tools alone.
+    public static let acuityTargetPPMM: Double = 10.0699301
+
     // MARK: - Paths
 
     /// Base directory for all display overrides.
@@ -79,7 +86,7 @@ public struct PlistWriter {
             "DisplayVendorID":       Int(vendorID),
             "DisplayProductName":    productName,
             "scale-resolutions":     scaleResolutions,
-            "target-default-ppmm":   10.0699301 as Double,
+            "target-default-ppmm":   acuityTargetPPMM,
         ]
 
         let data = try PropertyListSerialization.data(
@@ -113,6 +120,73 @@ public struct PlistWriter {
         if remaining?.isEmpty == true {
             try? fm.removeItem(at: vendorDir)
         }
+    }
+
+    // MARK: - Clean (uninstall --clean)
+
+    /// Outcome of a `--clean` sweep over the overrides tree.
+    public struct CleanResult {
+        public var removed: [URL] = []
+        public var skippedForeign: [URL] = []
+        public var failed: [(url: URL, error: Error)] = []
+    }
+
+    /// Returns `true` if the plist at `url` carries acuity's ownership marker
+    /// (the `target-default-ppmm` value stamped by `write()`). Unreadable or
+    /// foreign files return `false`.
+    public static func isAcuityOverride(at url: URL) -> Bool {
+        guard
+            let data = try? Data(contentsOf: url),
+            let plist = try? PropertyListSerialization.propertyList(
+                from: data, options: [], format: nil
+            ) as? [String: Any],
+            let ppmm = plist["target-default-ppmm"] as? Double
+        else {
+            return false
+        }
+        return abs(ppmm - acuityTargetPPMM) < 1e-9
+    }
+
+    /// Removes every acuity-owned override under `baseURL`.
+    ///
+    /// Only files carrying acuity's marker are deleted — overrides written by
+    /// other tools are reported in `skippedForeign` and left in place.
+    /// Removal failures (e.g. EPERM on the root-owned tree when run without
+    /// sudo) are collected in `failed`, never silently swallowed.
+    public static func cleanAcuityOverrides(baseURL: URL = overridesBasePath) -> CleanResult {
+        var result = CleanResult()
+        let fm = FileManager.default
+
+        guard fm.fileExists(atPath: baseURL.path) else { return result }
+
+        let vendorDirs = ((try? fm.contentsOfDirectory(at: baseURL, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.lastPathComponent.hasPrefix("DisplayVendorID-") }
+
+        for vendorDir in vendorDirs {
+            let products = ((try? fm.contentsOfDirectory(at: vendorDir, includingPropertiesForKeys: nil)) ?? [])
+                .filter { $0.lastPathComponent.hasPrefix("DisplayProductID-") }
+
+            for product in products {
+                guard isAcuityOverride(at: product) else {
+                    result.skippedForeign.append(product)
+                    continue
+                }
+                do {
+                    try fm.removeItem(at: product)
+                    result.removed.append(product)
+                } catch {
+                    result.failed.append((url: product, error: error))
+                }
+            }
+
+            // Remove the vendor directory only when nothing is left in it.
+            if let remaining = try? fm.contentsOfDirectory(atPath: vendorDir.path),
+               remaining.isEmpty {
+                try? fm.removeItem(at: vendorDir)
+            }
+        }
+
+        return result
     }
 
     // MARK: - Existence check

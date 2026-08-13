@@ -111,8 +111,11 @@ public struct AgentManager {
             //   - Requires the Aqua session (LimitLoadToSessionType) and loading
             //     via `launchctl bootstrap gui/<uid>` — both handled by install().
             //
-            // KeepAlive = true: relaunch the menubar on quit or crash so it cannot
-            // silently disappear. Verified: killing the process respawns it.
+            // KeepAlive = {SuccessfulExit: false}: relaunch the menubar on crash
+            // or non-zero exit so it cannot silently disappear, but respect a
+            // clean exit — "Quit Acuity" (NSApplication.terminate → exit 0) must
+            // stick. A bare KeepAlive=true made launchd respawn the app
+            // instantly after every quit.
             return """
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -132,7 +135,10 @@ public struct AgentManager {
                 <true/>
 
                 <key>KeepAlive</key>
-                <true/>
+                <dict>
+                    <key>SuccessfulExit</key>
+                    <false/>
+                </dict>
 
                 <key>LimitLoadToSessionType</key>
                 <string>Aqua</string>

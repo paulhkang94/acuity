@@ -25,7 +25,7 @@ swift build -c release # release build -> .build/release/acuity
 
 ```bash
 swift test                      # Swift unit tests
-python3 -m pytest pytests/ -q   # Python tests (scripts/hidpi.py)
+python3 -m pytest pytests/ -q   # Python tests (hidpi.py deprecation stub)
 scripts/claude-verify.sh --all  # full pipeline: lint -> test -> compile
 ```
 

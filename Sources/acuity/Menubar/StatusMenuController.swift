@@ -176,6 +176,10 @@ public final class StatusMenuController: NSObject {
 
 extension StatusMenuController: NSMenuDelegate {
     public func menuWillOpen(_ menu: NSMenu) {
+        // Re-enumerate on every open — the cached list goes stale when a
+        // display is connected or disconnected between opens. Enumeration is
+        // cheap for the 1-3 displays a Mac realistically drives.
+        displays = DisplayEnumerator.allDisplays()
         populateMenu(menu)
     }
 }

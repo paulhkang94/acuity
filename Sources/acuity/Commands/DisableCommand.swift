@@ -31,7 +31,7 @@ struct DisableCommand: ParsableCommand {
 
         let targets: [DisplayInfo]
         if let displayArg = display {
-            let parsed = try parseVendorProduct(displayArg)
+            let parsed = try parseDisplayIDPair(displayArg)
             guard let match = allDisplays.first(where: {
                 $0.vendorID == parsed.vendorID && $0.productID == parsed.productID
             }) else {
@@ -80,16 +80,6 @@ struct DisableCommand: ParsableCommand {
         guard geteuid() == 0 else {
             throw AcuityError.notRoot
         }
-    }
-
-    private func parseVendorProduct(_ arg: String) throws -> (vendorID: UInt32, productID: UInt32) {
-        let parts = arg.split(separator: ":").map(String.init)
-        guard parts.count == 2,
-              let vendor = UInt32(parts[0].trimmingCharacters(in: .whitespaces), radix: 16),
-              let product = UInt32(parts[1].trimmingCharacters(in: .whitespaces), radix: 16) else {
-            throw AcuityError.invalidDisplayArgument(arg)
-        }
-        return (vendor, product)
     }
 
     private func formatID(_ id: UInt32) -> String {
