@@ -43,4 +43,82 @@ final class ReconfigurationWatcherTests: XCTestCase {
         watcher?.stopWatching()
         watcher = nil
     }
+    func test_stopRestartDropsQueuedMainInventoryFromOldLifetime() throws {
+        let clock = ManualDisplayClock()
+        let work = DisplayWorkScheduler(schedule: clock.schedule, currentTarget: { _ in nil })
+        var mainJobs: [() -> Void] = []
+        var enumerations = 0
+        var registrations = 0
+        var removals = 0
+        var context: UnsafeMutableRawPointer?
+        let watcher = ReconfigurationWatcher(
+            selectionStore: try makeStore(), work: work,
+            enumerateDisplays: {
+                XCTAssertTrue(Thread.isMainThread)
+                enumerations += 1
+                return []
+            }, onMain: { mainJobs.append($0) },
+            registerCallback: { _, pointer in registrations += 1; context = pointer; return .success },
+            removeCallback: { _, pointer in
+                XCTAssertEqual(pointer, context)
+                removals += 1
+                return .success
+            }
+        )
+        watcher.startWatching()
+        watcher.startWatching()
+        watcher.stopWatching()
+        watcher.startWatching()
+        mainJobs[0]()
+        XCTAssertEqual(enumerations, 0)
+        mainJobs[1]()
+        XCTAssertEqual(enumerations, 1)
+        watcher.stopWatching()
+        XCTAssertEqual(registrations, 2)
+        XCTAssertEqual(removals, 2)
+    }
+
+    func test_removeEventCancelsDelayedApplyAndStopDropsQueuedNotifications() throws {
+        let clock = ManualDisplayClock()
+        let target = DisplayWorkTarget(displayID: 1, vendorID: 2, productID: 3)
+        let work = DisplayWorkScheduler(schedule: clock.schedule, currentTarget: { _ in target })
+        var mainJobs: [() -> Void] = []
+        var notifications = 0
+        let watcher = ReconfigurationWatcher(
+            selectionStore: try makeStore(), work: work, enumerateDisplays: { [] },
+            onMain: { mainJobs.append($0) },
+            registerCallback: { _, _ in .success }, removeCallback: { _, _ in .success }
+        )
+        watcher.onDisplayChange = { notifications += 1 }
+        watcher.startWatching()
+        watcher.handleDisplayChange(displayID: 1, flags: .addFlag)
+        watcher.handleDisplayChange(displayID: 1, flags: .removeFlag)
+        XCTAssertEqual(clock.jobs.count, 1)
+        XCTAssertTrue(clock.jobs[0].cancelled)
+        watcher.stopWatching()
+        mainJobs.forEach { $0() }
+        XCTAssertEqual(notifications, 0)
+    }
+
+    func test_failedRemovalCanBeRetriedWithoutDuplicateRegistration() throws {
+        let work = DisplayWorkScheduler(currentTarget: { _ in nil })
+        var removals = 0
+        var registrations = 0
+        let watcher = ReconfigurationWatcher(
+            selectionStore: try makeStore(), work: work, enumerateDisplays: { [] }, onMain: { _ in },
+            registerCallback: { _, _ in registrations += 1; return .success },
+            removeCallback: { _, _ in
+                removals += 1
+                return removals == 1 ? .failure : .success
+            }
+        )
+        watcher.startWatching()
+        watcher.stopWatching()
+        XCTAssertNil(work.currentSession)
+        watcher.startWatching()
+        XCTAssertEqual(registrations, 1)
+        watcher.stopWatching()
+        XCTAssertEqual(removals, 2)
+    }
+
 }
