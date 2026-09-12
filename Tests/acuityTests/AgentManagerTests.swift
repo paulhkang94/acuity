@@ -37,6 +37,22 @@ final class AgentManagerTests: XCTestCase {
             "menubar agent must respawn only on unsuccessful exit so Quit Acuity sticks")
     }
 
+    func test_referencePlist_keepAliveMatchesGeneratedMenubarPolicy() throws {
+        let referenceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("LaunchAgent/com.acuity.agent.plist")
+        let reference = try XCTUnwrap(PropertyListSerialization.propertyList(
+            from: Data(contentsOf: referenceURL), format: nil
+        ) as? [String: Any])
+        let generated = try XCTUnwrap(PropertyListSerialization.propertyList(
+            from: Data(AgentManager.buildPlist(executablePath: bundleBinary, command: "start").utf8),
+            format: nil
+        ) as? [String: Any])
+        let referencePolicy = try XCTUnwrap(reference["KeepAlive"] as? [String: Bool])
+        XCTAssertEqual(referencePolicy, generated["KeepAlive"] as? [String: Bool],
+                       "The reference agent must honor the same clean-Quit policy as the installer")
+    }
+
     func test_startPlist_limitsToAquaSession() {
         let plist = AgentManager.buildPlist(executablePath: bundleBinary, command: "start")
         XCTAssertTrue(plist.contains("<key>LimitLoadToSessionType</key>"))

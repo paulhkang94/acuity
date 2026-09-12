@@ -7,7 +7,7 @@
   Key requirements (do not regress):
    - Launch the binary INSIDE Acuity.app (bundle identity → WindowServer access).
      A bare CLI binary (e.g. /usr/local/bin/acuity) exits EX_CONFIG (78) under launchd.
-   - KeepAlive=true so the menubar relaunches on quit/crash (cannot silently vanish).
+   - KeepAlive={SuccessfulExit=false}: relaunch on crash, respect a clean Quit.
    - LimitLoadToSessionType=Aqua; load via `launchctl bootstrap gui/<uid>`.
    - Log to ~/Library/Logs (user-owned), never /tmp (root-owned footgun — see GOTCHAS.md).
 -->
@@ -24,7 +24,10 @@
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
-    <true/>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
     <key>LimitLoadToSessionType</key>
     <string>Aqua</string>
     <key>StandardErrorPath</key>
