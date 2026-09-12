@@ -27,14 +27,112 @@ final class StatusMenuControllerTests: XCTestCase {
         XCTAssertEqual(enumerations, 2, "Each later open must still obtain a fresh snapshot")
     }
 
+    func test_enableAll_runsWorkOffMainAndKeepsReentryDisabledUntilMainCompletion() {
+        let started = expectation(description: "worker started")
+        let finished = expectation(description: "main completion")
+        let releaseWorker = DispatchSemaphore(value: 0)
+        var authorizations = 0
+        var snapshots = 0
+        let display = makeDisplay()
+        let controller = StatusMenuController(enumerateDisplays: {
+            XCTAssertTrue(Thread.isMainThread)
+            snapshots += 1
+            return [display]
+        })
+        controller.beginEnableHiDPIAll(authorize: {
+            XCTAssertTrue(Thread.isMainThread)
+            authorizations += 1
+            return true
+        }, apply: { inventory in
+            XCTAssertFalse(Thread.isMainThread, "Mode changes and store work must not block AppKit")
+            XCTAssertEqual(inventory.map(\.displayID), [display.displayID])
+            started.fulfill()
+            if !Thread.isMainThread {
+                XCTAssertEqual(releaseWorker.wait(timeout: .now() + 5), .success)
+            }
+            return (2, 1)
+        }, completion: { total, applied in
+            XCTAssertTrue(Thread.isMainThread)
+            XCTAssertFalse(controller.isEnablingHiDPI)
+            XCTAssertEqual(total, 2)
+            XCTAssertEqual(applied, 1)
+            finished.fulfill()
+        })
+        wait(for: [started], timeout: 2)
+        XCTAssertTrue(controller.isEnablingHiDPI)
+        let menu = NSMenu()
+        controller.menuWillOpen(menu)
+        XCTAssertNil(menu.items.first(where: { $0.submenu != nil }), "Pending work must hide resolution actions")
+        XCTAssertFalse(menu.items.first(where: { $0.title == "Enabling HiDPI…" })?.isEnabled ?? true)
+        controller.beginEnableHiDPIAll(authorize: {
+            authorizations += 1
+            return false
+        }, apply: { _ in
+            XCTFail("Reentry must not start work")
+            return (0, 0)
+        }, completion: { _, _ in XCTFail("Reentry must not complete") })
+        XCTAssertEqual(authorizations, 1)
+        XCTAssertEqual(snapshots, 1, "Pending menus must not take additional topology snapshots")
+        releaseWorker.signal()
+        wait(for: [finished], timeout: 2)
+        XCTAssertEqual(snapshots, 2, "Completion refreshes the menu on main")
+        controller.menuWillOpen(menu)
+        XCTAssertNotNil(menu.items.first(where: { $0.submenu != nil }), "Resolution actions return after completion")
+    }
+
+    func test_enableAll_zeroSuccessfulAppliesClearsBusyStateForRetry() {
+        let finished = expectation(description: "failed applications complete")
+        let controller = StatusMenuController(enumerateDisplays: { [] })
+        var retried = false
+        controller.beginEnableHiDPIAll(authorize: { true }, apply: { _ in
+            XCTAssertFalse(Thread.isMainThread)
+            return (1, 0)
+        }, completion: { total, applied in
+            XCTAssertTrue(Thread.isMainThread)
+            XCTAssertEqual(total, 1)
+            XCTAssertEqual(applied, 0)
+            XCTAssertFalse(controller.isEnablingHiDPI)
+            controller.beginEnableHiDPIAll(authorize: {
+                retried = true
+                return false
+            }, apply: { _ in (0, 0) }, completion: { _, _ in XCTFail("Retry was cancelled") })
+            finished.fulfill()
+        })
+        wait(for: [finished], timeout: 2)
+        XCTAssertTrue(retried)
+    }
+
+    func test_enableAll_authorizationCancellationClearsBusyStateAndAllowsRetry() {
+        let controller = StatusMenuController(enumerateDisplays: { [] })
+        var attempts = 0
+        for _ in 0..<2 {
+            controller.beginEnableHiDPIAll(authorize: {
+                XCTAssertTrue(Thread.isMainThread)
+                XCTAssertTrue(controller.isEnablingHiDPI)
+                attempts += 1
+                controller.beginEnableHiDPIAll(authorize: {
+                    XCTFail("Reentry during authorization must be ignored")
+                    return false
+                }, apply: { _ in (0, 0) }, completion: { _, _ in })
+                return false
+            }, apply: { _ in
+                XCTFail("Cancelled authorization must not start work")
+                return (0, 0)
+            }, completion: { _, _ in XCTFail("Cancelled authorization must not show success") })
+            XCTAssertFalse(controller.isEnablingHiDPI)
+        }
+        XCTAssertEqual(attempts, 2)
+    }
+
     func test_enableAll_preservesRememberedHzWhenItFallsBack() throws {
         let store = makeStore()
         let display = makeDisplay()
         try store.record(vendorID: display.vendorID, productID: display.productID,
                          width: 1920, height: 1080, hz: 120)
 
-        let result = StatusMenuController().applyHiDPILiveToAllExternals(
-            displays: [display], store: store
+        let result = StatusMenuController.applyHiDPILiveToAllExternals(
+            displays: [display], store: store,
+            currentIdentity: { _ in (display.vendorID, display.productID) }
         ) { received, width, height, hz in
             XCTAssertEqual(received.displayID, display.displayID)
             XCTAssertEqual(width, 1920)
@@ -56,8 +154,9 @@ final class StatusMenuControllerTests: XCTestCase {
         for (refreshRate, expectedHz) in [(119.88, Optional(120)), (0, nil)] {
             try store.record(vendorID: display.vendorID, productID: display.productID,
                              width: 1920, height: 1080, hz: nil)
-            let result = StatusMenuController().applyHiDPILiveToAllExternals(
-                displays: [display], store: store
+            let result = StatusMenuController.applyHiDPILiveToAllExternals(
+                displays: [display], store: store,
+                currentIdentity: { _ in (display.vendorID, display.productID) }
             ) { _, _, _, hz in
                 XCTAssertNil(hz)
                 return (refreshRate, false)
@@ -73,14 +172,45 @@ final class StatusMenuControllerTests: XCTestCase {
         let display = makeDisplay()
         try store.record(vendorID: display.vendorID, productID: display.productID,
                          width: 1920, height: 1080, hz: 120)
-        let result = StatusMenuController().applyHiDPILiveToAllExternals(
-            displays: [display, makeDisplay(isBuiltIn: true)], store: store
+        let result = StatusMenuController.applyHiDPILiveToAllExternals(
+            displays: [display, makeDisplay(isBuiltIn: true)], store: store,
+            currentIdentity: { _ in (display.vendorID, display.productID) }
         ) { _, _, _, _ in
             throw NSError(domain: "AcuityTest", code: 1)
         }
         XCTAssertEqual(result.total, 1)
         XCTAssertEqual(result.applied, 0)
         XCTAssertEqual(store.selection(vendorID: display.vendorID, productID: display.productID)?.hz, 120)
+    }
+
+    func test_enableAll_skipsDisconnectedOrReassignedDisplayWithoutRewritingSelection() throws {
+        let display = makeDisplay()
+        let identities: [(vendorID: UInt32, productID: UInt32)?] = [
+            nil,
+            (display.vendorID + 1, display.productID),
+            (display.vendorID, display.productID + 1),
+        ]
+        for identity in identities {
+            let store = makeStore()
+            try store.record(vendorID: display.vendorID, productID: display.productID,
+                             width: 1920, height: 1080, hz: 120)
+            let before = store.readAll()
+            var applied = false
+            let result = StatusMenuController.applyHiDPILiveToAllExternals(
+                displays: [display], store: store,
+                currentIdentity: { displayID in
+                    XCTAssertEqual(displayID, display.displayID)
+                    return identity
+                }
+            ) { _, _, _, _ in
+                applied = true
+                return (60, false)
+            }
+            XCTAssertFalse(applied, "A disconnected or reassigned display must not receive the old request")
+            XCTAssertEqual(result.total, 1, "Keep the captured total for partial-success reporting")
+            XCTAssertEqual(result.applied, 0)
+            XCTAssertEqual(store.readAll(), before, "A stale request must not rewrite remembered preferences")
+        }
     }
 
     private func makeStore() -> SelectionStore {
