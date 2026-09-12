@@ -131,7 +131,8 @@ final class StatusMenuControllerTests: XCTestCase {
                          width: 1920, height: 1080, hz: 120)
 
         let result = StatusMenuController.applyHiDPILiveToAllExternals(
-            displays: [display], store: store
+            displays: [display], store: store,
+            currentIdentity: { _ in (display.vendorID, display.productID) }
         ) { received, width, height, hz in
             XCTAssertEqual(received.displayID, display.displayID)
             XCTAssertEqual(width, 1920)
@@ -154,7 +155,8 @@ final class StatusMenuControllerTests: XCTestCase {
             try store.record(vendorID: display.vendorID, productID: display.productID,
                              width: 1920, height: 1080, hz: nil)
             let result = StatusMenuController.applyHiDPILiveToAllExternals(
-                displays: [display], store: store
+                displays: [display], store: store,
+                currentIdentity: { _ in (display.vendorID, display.productID) }
             ) { _, _, _, hz in
                 XCTAssertNil(hz)
                 return (refreshRate, false)
@@ -171,13 +173,44 @@ final class StatusMenuControllerTests: XCTestCase {
         try store.record(vendorID: display.vendorID, productID: display.productID,
                          width: 1920, height: 1080, hz: 120)
         let result = StatusMenuController.applyHiDPILiveToAllExternals(
-            displays: [display, makeDisplay(isBuiltIn: true)], store: store
+            displays: [display, makeDisplay(isBuiltIn: true)], store: store,
+            currentIdentity: { _ in (display.vendorID, display.productID) }
         ) { _, _, _, _ in
             throw NSError(domain: "AcuityTest", code: 1)
         }
         XCTAssertEqual(result.total, 1)
         XCTAssertEqual(result.applied, 0)
         XCTAssertEqual(store.selection(vendorID: display.vendorID, productID: display.productID)?.hz, 120)
+    }
+
+    func test_enableAll_skipsDisconnectedOrReassignedDisplayWithoutRewritingSelection() throws {
+        let display = makeDisplay()
+        let identities: [(vendorID: UInt32, productID: UInt32)?] = [
+            nil,
+            (display.vendorID + 1, display.productID),
+            (display.vendorID, display.productID + 1),
+        ]
+        for identity in identities {
+            let store = makeStore()
+            try store.record(vendorID: display.vendorID, productID: display.productID,
+                             width: 1920, height: 1080, hz: 120)
+            let before = store.readAll()
+            var applied = false
+            let result = StatusMenuController.applyHiDPILiveToAllExternals(
+                displays: [display], store: store,
+                currentIdentity: { displayID in
+                    XCTAssertEqual(displayID, display.displayID)
+                    return identity
+                }
+            ) { _, _, _, _ in
+                applied = true
+                return (60, false)
+            }
+            XCTAssertFalse(applied, "A disconnected or reassigned display must not receive the old request")
+            XCTAssertEqual(result.total, 1, "Keep the captured total for partial-success reporting")
+            XCTAssertEqual(result.applied, 0)
+            XCTAssertEqual(store.readAll(), before, "A stale request must not rewrite remembered preferences")
+        }
     }
 
     private func makeStore() -> SelectionStore {

@@ -1,4 +1,5 @@
 import AppKit
+import CoreGraphics
 import Foundation
 
 /// Owns the NSStatusItem and rebuilds the menu on display change events.
@@ -184,6 +185,10 @@ public final class StatusMenuController: NSObject {
     static func applyHiDPILiveToAllExternals(
         displays: [DisplayInfo],
         store: SelectionStore = .standard(),
+        currentIdentity: (CGDirectDisplayID) -> (vendorID: UInt32, productID: UInt32)? = { displayID in
+            guard CGDisplayIsOnline(displayID) != 0 else { return nil }
+            return (CGDisplayVendorNumber(displayID), CGDisplayModelNumber(displayID))
+        },
         applyMode: (DisplayInfo, Int, Int, Int?) throws -> (refreshRate: Double, hzFellBack: Bool) = { display, width, height, hz in
             let result = try ResolutionController.apply(
                 width: width, height: height, hz: hz, preferHiDPI: true,
@@ -205,6 +210,11 @@ public final class StatusMenuController: NSObject {
                 target = nil
             }
             guard let t = target else { continue }
+            // The snapshot can outlive a disconnect or display-ID reassignment
+            // while queued. Recheck online identity immediately before applying.
+            guard let identity = currentIdentity(d.displayID),
+                  identity.vendorID == d.vendorID,
+                  identity.productID == d.productID else { continue }
             do {
                 let (refreshRate, hzFellBack) = try applyMode(d, t.width, t.height, t.hz)
                 applied += 1
