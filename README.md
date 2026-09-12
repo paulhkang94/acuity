@@ -16,6 +16,8 @@ The fix is the long-established EDID-override technique: write a plist to `/Libr
 
 Acuity automates the override generation, switches modes live via public CoreGraphics APIs, and remembers your chosen mode (size and refresh rate) so a LaunchAgent re-applies it on reconnect and at login. If the remembered refresh rate isn't available at reconnect time, the resolution is still applied at the best available rate and the fallback is logged. The menubar and CLI are resolution-focused.
 
+If there is no remembered choice or its resolution cannot be applied, automatic fallback chooses the widest desktop-usable HiDPI mode exposed by public CoreGraphics APIs. This public catalog may be narrower than modes listed by private display utilities. Automatic fallback keeps the remembered preference intact for a later reconnect.
+
 > **Sharpness ceiling.** HiDPI improves anti-aliasing but cannot exceed the panel's physical pixel density. On a ~109 PPI panel it's clearly smoother than blurry scaling, but it is not true Retina — that requires a denser panel (4K ≈ 163 PPI, 5K ≈ 218 PPI), which then needs no override at all. Acuity helps most on sub-Retina panels where you want larger-but-sharp UI.
 
 ## Requirements

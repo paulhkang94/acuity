@@ -121,4 +121,75 @@ final class ReconfigurationWatcherTests: XCTestCase {
         XCTAssertEqual(removals, 2)
     }
 
+    func test_publicFallbackEntryPathsNeverRewritePreferencesOrRetryRecursively() throws {
+        let target = DisplayWorkTarget(displayID: 1, vendorID: 2, productID: 3)
+        for remembered in [false, true] {
+            for fallbackFails in [false, true] {
+                let store = try makeStore()
+                if remembered {
+                    try store.record(vendorID: 2, productID: 3, width: 1920, height: 1080, hz: 120)
+                }
+                let before = store.readAll()
+                let watcher = ReconfigurationWatcher(selectionStore: store)
+                var primaryCalls = 0
+                var fallbackCalls = 0
+                watcher.applyHiDPIIfOverrideExists(
+                    target: target, canApply: { true }, overrideExists: { _, _ in true },
+                    applyRemembered: { selection, _, _ in
+                        primaryCalls += 1
+                        XCTAssertEqual(selection.hz, 120)
+                        throw AcuityError.resolutionNotAvailable("fixture")
+                    }, fallback: { _ in
+                        fallbackCalls += 1
+                        if fallbackFails { throw AcuityError.resolutionNotAvailable("public fixture") }
+                    }
+                )
+                XCTAssertEqual(primaryCalls, remembered ? 1 : 0)
+                XCTAssertEqual(fallbackCalls, 1)
+                XCTAssertEqual(store.readAll(), before)
+            }
+        }
+    }
+
+    func test_cancelledRememberedFailureDoesNotStartFallback() throws {
+        let store = try makeStore()
+        try store.record(vendorID: 2, productID: 3, width: 1920, height: 1080, hz: 120)
+        let before = store.readAll()
+        let watcher = ReconfigurationWatcher(selectionStore: store)
+        var current = true
+        watcher.applyHiDPIIfOverrideExists(
+            target: DisplayWorkTarget(displayID: 1, vendorID: 2, productID: 3),
+            canApply: { current }, overrideExists: { _, _ in true },
+            applyRemembered: { _, _, _ in
+                current = false
+                throw AcuityError.resolutionNotAvailable("cancelled fixture")
+            }, fallback: { _ in XCTFail("Cancellation must prevent the subsequent fallback") }
+        )
+        XCTAssertEqual(store.readAll(), before)
+    }
+
+    func test_successfulRememberedHzFallbackNeverUsesDefaultOrRewritesPreference() throws {
+        let store = try makeStore()
+        try store.record(vendorID: 2, productID: 3, width: 1920, height: 1080, hz: 120)
+        let watcher = ReconfigurationWatcher(selectionStore: store)
+        watcher.applyHiDPIIfOverrideExists(
+            target: DisplayWorkTarget(displayID: 1, vendorID: 2, productID: 3),
+            canApply: { true }, overrideExists: { _, _ in true },
+            applyRemembered: { _, _, _ in (60, true) },
+            fallback: { _ in XCTFail("A successful remembered resolution needs no default fallback") }
+        )
+        XCTAssertEqual(store.selection(vendorID: 2, productID: 3)?.hz, 120)
+    }
+
+    func test_cancelledDefaultEntryNeverReadsOverrideOrApplies() throws {
+        let watcher = ReconfigurationWatcher(selectionStore: try makeStore())
+        watcher.applyHiDPIIfOverrideExists(
+            target: DisplayWorkTarget(displayID: 1, vendorID: 2, productID: 3),
+            canApply: { false },
+            overrideExists: { _, _ in XCTFail("Cancelled work must stop before override lookup"); return true },
+            applyRemembered: { _, _, _ in XCTFail("Cancelled work must not apply"); return (0, false) },
+            fallback: { _ in XCTFail("Cancelled work must not fall back") }
+        )
+    }
+
 }

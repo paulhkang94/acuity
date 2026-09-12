@@ -10,6 +10,14 @@ struct ModeCandidate {
     let usableForDesktopGUI: Bool
 }
 
+/// Injectable transaction boundary; tests use inert handles instead of CoreGraphics.
+struct DisplayModeTransaction<Configuration> {
+    let begin: () -> (CGError, Configuration)
+    let configure: (Configuration) -> CGError
+    let complete: (Configuration, CGConfigureOption) -> CGError
+    let cancel: (Configuration) -> Void
+}
+
 /// Switches displays between resolution modes at runtime (no reboot) using the
 /// public CoreGraphics display-configuration APIs. Shared by the
 /// `set-resolution` command and the menubar so both apply modes identically.
@@ -200,35 +208,105 @@ enum ResolutionController {
         guard let index = selection.index else {
             throw AcuityError.resolutionNotAvailable("\(width)×\(height) on \(displayName)")
         }
-        let mode = modes[index]
+        let mode = try applyExactMode(modes[index], toDisplayID: displayID, displayName: displayName)
+        return (mode, selection.hzFellBack)
+    }
 
-        // Short-circuit: when the display already sits in the selected mode
-        // (the common case at daemon start, since `.permanently` makes the OS
-        // itself restore it), skip the WindowServer transaction entirely - a
-        // redundant CGComplete can flash the display and blocks the caller.
-        if let current = CGDisplayCopyDisplayMode(displayID),
-            current.ioDisplayModeID == mode.ioDisplayModeID {
-            fputs(
-                "[acuity] \(displayName) already at \(width)×\(height)"
-                + "\(hz.map { " @ \($0)Hz" } ?? "") - skipping re-apply.\n",
-                stderr
-            )
-            return (current, selection.hzFellBack)
+    /// Select by logical width, retaining the first candidate on ties (including Hz).
+    static func applyDefaultHiDPI<Mode, Result>(
+        modes: [Mode],
+        describe: (Mode) -> ModeCandidate,
+        displayName: String,
+        apply: (Mode) throws -> Result
+    ) throws -> Result {
+        var bestIndex: Int?
+        var bestWidth = 0
+        for (index, mode) in modes.enumerated() {
+            let candidate = describe(mode)
+            if candidate.isHiDPI && candidate.usableForDesktopGUI
+                && candidate.width > bestWidth && candidate.height > 0 {
+                bestIndex = index
+                bestWidth = candidate.width
+            }
         }
+        guard let index = bestIndex else {
+            throw AcuityError.resolutionNotAvailable("automatic fallback on \(displayName)")
+        }
+        return try apply(modes[index])
+    }
 
-        var config: CGDisplayConfigRef?
-        guard CGBeginDisplayConfiguration(&config) == .success else {
+    @discardableResult
+    static func applyWidestHiDPIMode(
+        toDisplayID displayID: CGDirectDisplayID,
+        displayName: String,
+        canApply: () -> Bool
+    ) throws -> CGDisplayMode {
+        try applyDefaultHiDPI(modes: allModes(for: displayID), describe: { mode in
+            ModeCandidate(
+                width: mode.width, height: mode.height,
+                isHiDPI: mode.pixelWidth > mode.width,
+                refreshRate: Int(mode.refreshRate.rounded()),
+                usableForDesktopGUI: mode.isUsableForDesktopGUI()
+            )
+        }, displayName: displayName) { mode in
+            try applyExactMode(mode, toDisplayID: displayID, displayName: displayName, canApply: canApply)
+        }
+    }
+
+    private static func applyExactMode(
+        _ mode: CGDisplayMode,
+        toDisplayID displayID: CGDirectDisplayID,
+        displayName: String,
+        canApply: () -> Bool = { true }
+    ) throws -> CGDisplayMode {
+        let current = CGDisplayCopyDisplayMode(displayID)
+        let alreadyCurrent = current?.ioDisplayModeID == mode.ioDisplayModeID
+        let transaction = DisplayModeTransaction<CGDisplayConfigRef?>(
+            begin: {
+                var config: CGDisplayConfigRef?
+                let error = CGBeginDisplayConfiguration(&config)
+                return (error, config)
+            },
+            configure: { CGConfigureDisplayWithDisplayMode($0, displayID, mode, nil) },
+            complete: { CGCompleteDisplayConfiguration($0, $1) },
+            cancel: { _ = CGCancelDisplayConfiguration($0) }
+        )
+        try commitMode(alreadyCurrent: alreadyCurrent, displayName: displayName,
+                       canApply: canApply, transaction: transaction)
+        if alreadyCurrent, let current {
+            fputs("[acuity] \(displayName) already at selected mode - skipping re-apply.\n", stderr)
+            return current
+        }
+        return mode
+    }
+
+    enum ModeApplicationError: Error { case cancelled }
+
+    static func commitMode<Configuration>(
+        alreadyCurrent: Bool,
+        displayName: String,
+        canApply: () -> Bool,
+        transaction: DisplayModeTransaction<Configuration>
+    ) throws {
+        guard canApply() else { throw ModeApplicationError.cancelled }
+        if alreadyCurrent { return }
+        let (beginError, config) = transaction.begin()
+        guard beginError == .success else {
             throw AcuityError.setResolutionFailed(displayName, -1)
         }
-        let configErr = CGConfigureDisplayWithDisplayMode(config, displayID, mode, nil)
-        guard configErr == .success else {
-            CGCancelDisplayConfiguration(config)
-            throw AcuityError.setResolutionFailed(displayName, configErr.rawValue)
+        var contextOpen = true
+        defer { if contextOpen { transaction.cancel(config) } }
+        guard canApply() else { throw ModeApplicationError.cancelled }
+        let configError = transaction.configure(config)
+        guard configError == .success else {
+            throw AcuityError.setResolutionFailed(displayName, configError.rawValue)
         }
-        let completeErr = CGCompleteDisplayConfiguration(config, .permanently)
-        guard completeErr == .success else {
-            throw AcuityError.setResolutionFailed(displayName, completeErr.rawValue)
+        guard canApply() else { throw ModeApplicationError.cancelled }
+        let completeError = transaction.complete(config, .permanently)
+        // Completion consumes the context on success AND failure (CoreGraphics contract).
+        contextOpen = false
+        guard completeError == .success else {
+            throw AcuityError.setResolutionFailed(displayName, completeError.rawValue)
         }
-        return (mode, selection.hzFellBack)
     }
 }
