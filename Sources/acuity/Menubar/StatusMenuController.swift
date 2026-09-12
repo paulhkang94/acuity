@@ -8,8 +8,18 @@ public final class StatusMenuController: NSObject {
 
     private var statusItem: NSStatusItem?
     private var displays: [DisplayInfo] = []
+    private let enumerateDisplays: () -> [DisplayInfo]
 
     // MARK: - Lifecycle
+
+    public override convenience init() {
+        self.init(enumerateDisplays: DisplayEnumerator.allDisplays)
+    }
+
+    init(enumerateDisplays: @escaping () -> [DisplayInfo]) {
+        self.enumerateDisplays = enumerateDisplays
+        super.init()
+    }
 
     /// Call after NSApplication is running (from main queue).
     public func setup() {
@@ -39,7 +49,7 @@ public final class StatusMenuController: NSObject {
         // stale per-session CGDirectDisplayIDs from disconnected displays must
         // never linger in representedObjects (a reassigned ID could target the
         // wrong display). The menu already pays O(displays × modes) per open.
-        displays = DisplayEnumerator.allDisplays()
+        displays = enumerateDisplays()
         menu.removeAllItems()
 
         let externalDisplays = displays.filter { !$0.isBuiltIn }
@@ -186,10 +196,7 @@ public final class StatusMenuController: NSObject {
 
 extension StatusMenuController: NSMenuDelegate {
     public func menuWillOpen(_ menu: NSMenu) {
-        // Re-enumerate on every open — the cached list goes stale when a
-        // display is connected or disconnected between opens. Enumeration is
-        // cheap for the 1-3 displays a Mac realistically drives.
-        displays = DisplayEnumerator.allDisplays()
+        // populateMenu takes one fresh topology snapshot for every open.
         populateMenu(menu)
     }
 }

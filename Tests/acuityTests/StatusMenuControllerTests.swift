@@ -12,6 +12,21 @@ final class StatusMenuControllerTests: XCTestCase {
         _ = controller
     }
 
+    func test_menuOpen_enumeratesOnceOnMainForEachFreshOpen() {
+        var enumerations = 0
+        let controller = StatusMenuController(enumerateDisplays: {
+            XCTAssertTrue(Thread.isMainThread, "Menu inventory must stay on the AppKit thread")
+            enumerations += 1
+            return []
+        })
+        let menu = NSMenu()
+
+        controller.menuWillOpen(menu)
+        XCTAssertEqual(enumerations, 1, "One menu open needs only one topology snapshot")
+        controller.menuWillOpen(menu)
+        XCTAssertEqual(enumerations, 2, "Each later open must still obtain a fresh snapshot")
+    }
+
     func test_enableAll_preservesRememberedHzWhenItFallsBack() throws {
         let store = makeStore()
         let display = makeDisplay()
