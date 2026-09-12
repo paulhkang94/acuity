@@ -12,7 +12,13 @@ public final class ReconfigurationWatcher {
     // MARK: - State
 
     private var isWatching = false
+    private let registrationLock = NSLock()
     private let selectionStore: SelectionStore
+    private let work: DisplayWorkScheduler
+    private let enumerateDisplays: () -> [DisplayInfo]
+    private let onMain: (@escaping () -> Void) -> Void
+    private let registerCallback: (CGDisplayReconfigurationCallBack, UnsafeMutableRawPointer) -> CGError
+    private let removeCallback: (CGDisplayReconfigurationCallBack, UnsafeMutableRawPointer) -> CGError
 
     /// Called on the main queue after any display topology change (add or
     /// remove), so UI owners (the menubar) can refresh their display lists.
@@ -23,8 +29,28 @@ public final class ReconfigurationWatcher {
     /// - Parameter selectionStore: remembers the user's chosen resolution per
     ///   display, so reconnect/boot re-applies THAT size rather than the
     ///   largest available HiDPI mode.
-    public init(selectionStore: SelectionStore) {
+    public convenience init(selectionStore: SelectionStore) {
+        self.init(selectionStore: selectionStore, work: DisplayWorkScheduler())
+    }
+
+    init(
+        selectionStore: SelectionStore,
+        work: DisplayWorkScheduler,
+        enumerateDisplays: @escaping () -> [DisplayInfo] = DisplayEnumerator.allDisplays,
+        onMain: @escaping (@escaping () -> Void) -> Void = { DispatchQueue.main.async(execute: $0) },
+        registerCallback: @escaping (CGDisplayReconfigurationCallBack, UnsafeMutableRawPointer) -> CGError = {
+            CGDisplayRegisterReconfigurationCallback($0, $1)
+        },
+        removeCallback: @escaping (CGDisplayReconfigurationCallBack, UnsafeMutableRawPointer) -> CGError = {
+            CGDisplayRemoveReconfigurationCallback($0, $1)
+        }
+    ) {
         self.selectionStore = selectionStore
+        self.work = work
+        self.enumerateDisplays = enumerateDisplays
+        self.onMain = onMain
+        self.registerCallback = registerCallback
+        self.removeCallback = removeCallback
     }
 
     /// The single C callback registered with CoreGraphics. Stored once so
@@ -37,20 +63,19 @@ public final class ReconfigurationWatcher {
         let watcher = Unmanaged<ReconfigurationWatcher>
             .fromOpaque(userInfo!)
             .takeUnretainedValue()
-        if flags.contains(.addFlag) {
-            watcher.handleDisplayAdded(displayID: displayID)
-        }
-        watcher.notifyDisplayChange()
+        watcher.handleDisplayChange(displayID: displayID, flags: flags)
     }
 
     /// Registers the display reconfiguration callback.
     ///
     /// Safe to call multiple times — subsequent calls are no-ops.
     public func startWatching() {
+        registrationLock.lock()
+        defer { registrationLock.unlock() }
         guard !isWatching else { return }
         isWatching = true
 
-        let err = CGDisplayRegisterReconfigurationCallback(
+        let err = registerCallback(
             Self.reconfigurationCallback,
             Unmanaged.passUnretained(self).toOpaque()
         )
@@ -62,13 +87,12 @@ public final class ReconfigurationWatcher {
 
         fputs("[acuity] ReconfigurationWatcher started.\n", stderr)
 
-        // Cold-boot path: displays already attached at login never fire the
-        // .addFlag callback, so re-apply each remembered choice. Runs off the
-        // calling thread: at daemon start this otherwise blocks the launch
-        // path (status item appearance) behind one WindowServer transaction
-        // per remembered display.
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            self?.applyRecordedSelectionsToConnectedDisplays()
+        let session = work.start()
+        // NSScreen-derived inventory belongs on main. Each remembered display
+        // becomes its own cancellable utility-queue work unit afterward.
+        onMain { [weak self] in
+            guard let self, work.isCurrent(session) else { return }
+            scheduleRecordedSelections(session: session)
         }
     }
 
@@ -77,10 +101,12 @@ public final class ReconfigurationWatcher {
     /// registration live — with `passUnretained` userInfo that would turn the
     /// next hotplug after deallocation into a use-after-free.
     public func stopWatching() {
+        registrationLock.lock()
+        defer { registrationLock.unlock() }
         guard isWatching else { return }
-        isWatching = false
+        work.stop()
 
-        let err = CGDisplayRemoveReconfigurationCallback(
+        let err = removeCallback(
             Self.reconfigurationCallback,
             Unmanaged.passUnretained(self).toOpaque()
         )
@@ -89,42 +115,40 @@ public final class ReconfigurationWatcher {
             return
         }
 
+        isWatching = false
         fputs("[acuity] ReconfigurationWatcher stopped.\n", stderr)
     }
 
     // MARK: - Display-add handler
 
-    /// Hops to the main queue and fires `onDisplayChange` so UI owners can
-    /// refresh after an add OR remove event.
-    private func notifyDisplayChange() {
-        DispatchQueue.main.async { [weak self] in
-            self?.onDisplayChange?()
+    /// Callback entry may arrive off main; scheduler bookkeeping is synchronized.
+    func handleDisplayChange(displayID: CGDirectDisplayID, flags: CGDisplayChangeSummaryFlags) {
+        guard let session = work.currentSession else { return }
+        if flags.contains(.removeFlag) {
+            work.cancel(displayID: displayID, session: session)
         }
-    }
-
-    private func handleDisplayAdded(displayID: CGDirectDisplayID) {
-        let vendorID  = UInt32(CGDisplayVendorNumber(displayID))
-        let productID = UInt32(CGDisplayModelNumber(displayID))
-
-        fputs(
-            "[acuity] Display connected: \(String(format: "0x%04X", vendorID)):"
-            + "\(String(format: "0x%04X", productID)) — waiting 2s for stabilization.\n",
-            stderr
-        )
-
-        // Give the display 2 seconds to finish enumeration before poking CGS.
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            self?.applyHiDPIIfOverrideExists(displayID: displayID, vendorID: vendorID, productID: productID)
+        if flags.contains(.addFlag), let target = work.currentTarget(for: displayID) {
+            fputs("[acuity] Display \(displayID) connected - waiting 2s for stabilization.\n", stderr)
+            work.enqueue(target, session: session) { [weak self] canApply in
+                self?.applyHiDPIIfOverrideExists(target: target, canApply: canApply)
+            }
+        }
+        onMain { [weak self] in
+            guard let self, work.isCurrent(session) else { return }
+            onDisplayChange?()
         }
     }
 
     // MARK: - HiDPI application
 
     private func applyHiDPIIfOverrideExists(
-        displayID: CGDirectDisplayID,
-        vendorID: UInt32,
-        productID: UInt32
+        target: DisplayWorkTarget,
+        canApply: () -> Bool
     ) {
+        guard canApply() else { return }
+        let displayID = target.displayID
+        let vendorID = target.vendorID
+        let productID = target.productID
         let plistURL = PlistWriter.overridePath(vendorID: vendorID, productID: productID)
 
         guard FileManager.default.fileExists(atPath: plistURL.path) else {
@@ -146,7 +170,8 @@ public final class ReconfigurationWatcher {
             applyRecordedSelection(
                 sel,
                 displayID: displayID,
-                displayName: String(format: "Display %04x:%04x", vendorID, productID)
+                displayName: String(format: "Display %04x:%04x", vendorID, productID),
+                canApply: canApply
             )
             return
         }
@@ -155,7 +180,7 @@ public final class ReconfigurationWatcher {
             "[acuity] Override found — no remembered choice; applying largest HiDPI for display \(displayID).\n",
             stderr
         )
-        applyHiDPIMode(displayID: displayID)
+        applyHiDPIMode(displayID: displayID, canApply: canApply)
     }
 
     // MARK: - Remembered-selection application
@@ -169,8 +194,10 @@ public final class ReconfigurationWatcher {
     private func applyRecordedSelection(
         _ sel: SelectionStore.Selection,
         displayID: CGDirectDisplayID,
-        displayName: String
+        displayName: String,
+        canApply: () -> Bool
     ) {
+        guard canApply() else { return }
         do {
             let (mode, hzFellBack) = try ResolutionController.apply(
                 width: sel.width, height: sel.height, hz: sel.hz, preferHiDPI: true,
@@ -191,23 +218,31 @@ public final class ReconfigurationWatcher {
                 )
             }
         } catch {
+            guard canApply() else { return }
             fputs(
                 "[acuity] Could not apply remembered \(sel.width)×\(sel.height) for \(displayName): "
                 + "\(error) — falling back to largest HiDPI.\n",
                 stderr
             )
-            applyHiDPIMode(displayID: displayID)
+            applyHiDPIMode(displayID: displayID, canApply: canApply)
         }
     }
 
-    /// Cold-boot path: displays already attached at login don't fire the
-    /// `.addFlag` callback, so re-apply each remembered choice at daemon start.
-    private func applyRecordedSelectionsToConnectedDisplays() {
-        for display in DisplayEnumerator.allDisplays() where !display.isBuiltIn {
-            guard let sel = selectionStore.selection(
-                vendorID: display.vendorID, productID: display.productID
-            ) else { continue }
-            applyRecordedSelection(sel, displayID: display.displayID, displayName: display.name)
+    /// Called on main so AppKit-derived names never move to a utility queue.
+    private func scheduleRecordedSelections(session: UUID) {
+        for display in enumerateDisplays() where !display.isBuiltIn {
+            let target = DisplayWorkTarget(
+                displayID: display.displayID, vendorID: display.vendorID, productID: display.productID
+            )
+            // A concurrent add event owns its two-second stabilization delay.
+            work.enqueue(target, after: 0, session: session, replacing: false) { [weak self] canApply in
+                guard let self, canApply(), let sel = selectionStore.selection(
+                    vendorID: display.vendorID, productID: display.productID
+                ) else { return }
+                applyRecordedSelection(
+                    sel, displayID: display.displayID, displayName: display.name, canApply: canApply
+                )
+            }
         }
     }
 
@@ -222,7 +257,8 @@ public final class ReconfigurationWatcher {
     ///
     /// These are private but do not require a special entitlement; any process
     /// running as the console user can call them.
-    private func applyHiDPIMode(displayID: CGDirectDisplayID) {
+    private func applyHiDPIMode(displayID: CGDirectDisplayID, canApply: () -> Bool) {
+        guard canApply() else { return }
         // Resolve function pointers via dlsym so the binary has no hard link
         // against the private SPI symbols.
         typealias GetNumberOfModesFn = @convention(c) (CGDirectDisplayID) -> Int32
@@ -281,6 +317,7 @@ public final class ReconfigurationWatcher {
             return
         }
 
+        guard canApply() else { return }
         var configRef: CGDisplayConfigRef?
         guard CGBeginDisplayConfiguration(&configRef) == .success else {
             fputs("[acuity] CGBeginDisplayConfiguration failed.\n", stderr)
