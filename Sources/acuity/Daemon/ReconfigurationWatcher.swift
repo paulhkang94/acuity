@@ -4,8 +4,8 @@ import Foundation
 /// Watches for display connection events and automatically re-applies HiDPI overrides.
 ///
 /// Uses `CGDisplayRegisterReconfigurationCallback` to detect when a new external
-/// display is connected, then invokes CGS private APIs (the same ones displayplacer
-/// uses) to switch into the HiDPI mode if a plist override already exists for that
+/// display is connected, then uses public CoreGraphics APIs to select a
+/// desktop-usable HiDPI mode if a plist override already exists for that
 /// display's vendor/product ID pair.
 public final class ReconfigurationWatcher {
 
@@ -141,17 +141,21 @@ public final class ReconfigurationWatcher {
 
     // MARK: - HiDPI application
 
-    private func applyHiDPIIfOverrideExists(
+    typealias RememberedApplication = (SelectionStore.Selection, CGDirectDisplayID, String) throws ->
+        (refreshRate: Int, hzFellBack: Bool)
+
+    func applyHiDPIIfOverrideExists(
         target: DisplayWorkTarget,
-        canApply: () -> Bool
+        canApply: () -> Bool,
+        overrideExists: (UInt32, UInt32) -> Bool = PlistWriter.exists,
+        applyRemembered: RememberedApplication? = nil,
+        fallback: ((CGDirectDisplayID) throws -> Void)? = nil
     ) {
         guard canApply() else { return }
         let displayID = target.displayID
         let vendorID = target.vendorID
         let productID = target.productID
-        let plistURL = PlistWriter.overridePath(vendorID: vendorID, productID: productID)
-
-        guard FileManager.default.fileExists(atPath: plistURL.path) else {
+        guard overrideExists(vendorID, productID) else {
             fputs(
                 "[acuity] No override plist for \(String(format: "0x%04X", vendorID)):"
                 + "\(String(format: "0x%04X", productID)) — skipping.\n",
@@ -160,7 +164,7 @@ public final class ReconfigurationWatcher {
             return
         }
 
-        // Prefer the user's remembered choice over the largest-HiDPI default.
+        // Prefer the user's remembered choice over the widest public HiDPI default.
         if let sel = selectionStore.selection(vendorID: vendorID, productID: productID) {
             let hzSuffix = sel.hz.map { " @ \($0)Hz" } ?? ""
             fputs(
@@ -171,16 +175,16 @@ public final class ReconfigurationWatcher {
                 sel,
                 displayID: displayID,
                 displayName: String(format: "Display %04x:%04x", vendorID, productID),
-                canApply: canApply
+                canApply: canApply, applyMode: applyRemembered, fallback: fallback
             )
             return
         }
 
         fputs(
-            "[acuity] Override found — no remembered choice; applying largest HiDPI for display \(displayID).\n",
+            "[acuity] Override found - no remembered choice; applying widest public HiDPI for display \(displayID).\n",
             stderr
         )
-        applyHiDPIMode(displayID: displayID, canApply: canApply)
+        applyWidestHiDPIMode(displayID: displayID, canApply: canApply, applyMode: fallback)
     }
 
     // MARK: - Remembered-selection application
@@ -189,21 +193,19 @@ public final class ReconfigurationWatcher {
     /// was recorded) via the public CoreGraphics path (the same one
     /// `set-resolution` uses). An unavailable remembered Hz never fails the
     /// re-apply — the resolution lands at the best available rate and the
-    /// fallback is logged. Falls back to the largest HiDPI mode only if the
+    /// fallback is logged. Falls back to the widest usable public HiDPI mode if the
     /// *resolution* itself can't be applied.
     private func applyRecordedSelection(
         _ sel: SelectionStore.Selection,
         displayID: CGDirectDisplayID,
         displayName: String,
-        canApply: () -> Bool
+        canApply: () -> Bool,
+        applyMode: RememberedApplication? = nil,
+        fallback: ((CGDirectDisplayID) throws -> Void)? = nil
     ) {
         guard canApply() else { return }
         do {
-            let (mode, hzFellBack) = try ResolutionController.apply(
-                width: sel.width, height: sel.height, hz: sel.hz, preferHiDPI: true,
-                toDisplayID: displayID, displayName: displayName
-            )
-            let appliedHz = Int(mode.refreshRate.rounded())
+            let (appliedHz, hzFellBack) = try (applyMode ?? Self.applyRememberedMode)(sel, displayID, displayName)
             if hzFellBack, let rememberedHz = sel.hz {
                 fputs(
                     "[acuity] remembered \(rememberedHz)Hz unavailable — applied "
@@ -221,11 +223,21 @@ public final class ReconfigurationWatcher {
             guard canApply() else { return }
             fputs(
                 "[acuity] Could not apply remembered \(sel.width)×\(sel.height) for \(displayName): "
-                + "\(error) — falling back to largest HiDPI.\n",
+                + "\(error) - falling back to widest public HiDPI.\n",
                 stderr
             )
-            applyHiDPIMode(displayID: displayID, canApply: canApply)
+            applyWidestHiDPIMode(displayID: displayID, canApply: canApply, applyMode: fallback)
         }
+    }
+
+    private static func applyRememberedMode(
+        _ selection: SelectionStore.Selection, displayID: CGDirectDisplayID, displayName: String
+    ) throws -> (refreshRate: Int, hzFellBack: Bool) {
+        let (mode, hzFellBack) = try ResolutionController.apply(
+            width: selection.width, height: selection.height, hz: selection.hz, preferHiDPI: true,
+            toDisplayID: displayID, displayName: displayName
+        )
+        return (Int(mode.refreshRate.rounded()), hzFellBack)
     }
 
     /// Called on main so AppKit-derived names never move to a utility queue.
@@ -248,98 +260,25 @@ public final class ReconfigurationWatcher {
 
     // MARK: - HiDPI application
 
-    /// Applies HiDPI mode using CGS private APIs resolved via dlsym.
-    ///
-    /// The APIs used here are identical to those used by displayplacer:
-    ///   - `CGSGetNumberOfDisplayModes`
-    ///   - `CGSGetDisplayModeDescriptionOfLength`
-    ///   - `CGSConfigureDisplayMode`
-    ///
-    /// These are private but do not require a special entitlement; any process
-    /// running as the console user can call them.
-    private func applyHiDPIMode(displayID: CGDirectDisplayID, canApply: () -> Bool) {
+    /// Automatic fallback is restricted to desktop-usable public modes.
+    private func applyWidestHiDPIMode(
+        displayID: CGDirectDisplayID,
+        canApply: () -> Bool,
+        applyMode: ((CGDirectDisplayID) throws -> Void)? = nil
+    ) {
         guard canApply() else { return }
-        // Resolve function pointers via dlsym so the binary has no hard link
-        // against the private SPI symbols.
-        typealias GetNumberOfModesFn = @convention(c) (CGDirectDisplayID) -> Int32
-        typealias GetModeDescFn      = @convention(c) (CGDirectDisplayID, Int32, UnsafeMutableRawPointer, Int32) -> CGError
-        typealias ConfigureModeFn    = @convention(c) (CGDisplayConfigRef?, CGDirectDisplayID, Int32) -> CGError
-
-        guard
-            let handle             = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_LAZY),
-            let numModesPtr        = dlsym(handle, "CGSGetNumberOfDisplayModes"),
-            let getModeDescPtr     = dlsym(handle, "CGSGetDisplayModeDescriptionOfLength"),
-            let configureModePtr   = dlsym(handle, "CGSConfigureDisplayMode")
-        else {
-            fputs("[acuity] Failed to resolve CGS private APIs via dlsym.\n", stderr)
-            return
-        }
-
-        let getNumberOfModes = unsafeBitCast(numModesPtr,      to: GetNumberOfModesFn.self)
-        let getModeDesc      = unsafeBitCast(getModeDescPtr,   to: GetModeDescFn.self)
-        let configureMode    = unsafeBitCast(configureModePtr, to: ConfigureModeFn.self)
-
-        let count = getNumberOfModes(displayID)
-        guard count > 0 else {
-            fputs("[acuity] No display modes returned for display \(displayID).\n", stderr)
-            return
-        }
-
-        // CGSDisplayModeDescription layout (opaque, 256 bytes).
-        // Byte offsets verified against open-source displayplacer implementation.
-        let descSize = 256
-        var modeBuffer = [UInt8](repeating: 0, count: descSize)
-
-        var bestModeIndex: Int32 = -1
-        var bestWidth:     Int32 = 0
-
-        for index in 0..<count {
-            let result = modeBuffer.withUnsafeMutableBytes { ptr in
-                getModeDesc(displayID, index, ptr.baseAddress!, Int32(descSize))
+        do {
+            if let applyMode {
+                try applyMode(displayID)
+            } else {
+                try ResolutionController.applyWidestHiDPIMode(
+                    toDisplayID: displayID, displayName: "Display \(displayID)", canApply: canApply
+                )
             }
-            guard result == .success else { continue }
-
-            // Width is at offset 8, height at offset 12 (Int32, little-endian).
-            let width  = modeBuffer.withUnsafeBytes { $0.load(fromByteOffset: 8,  as: Int32.self) }
-            let flags  = modeBuffer.withUnsafeBytes { $0.load(fromByteOffset: 48, as: UInt32.self) }
-
-            // Bit 2 of the flags field indicates a HiDPI / "retina" mode.
-            let isHiDPI = (flags & 0x4) != 0
-
-            if isHiDPI && width > bestWidth {
-                bestWidth     = width
-                bestModeIndex = index
-            }
-        }
-
-        guard bestModeIndex >= 0 else {
-            fputs("[acuity] No HiDPI modes found for display \(displayID).\n", stderr)
-            return
-        }
-
-        guard canApply() else { return }
-        var configRef: CGDisplayConfigRef?
-        guard CGBeginDisplayConfiguration(&configRef) == .success else {
-            fputs("[acuity] CGBeginDisplayConfiguration failed.\n", stderr)
-            return
-        }
-
-        let setResult = configureMode(configRef, displayID, bestModeIndex)
-        guard setResult == .success else {
-            CGCancelDisplayConfiguration(configRef)
-            fputs("[acuity] CGSConfigureDisplayMode failed: \(setResult.rawValue).\n", stderr)
-            return
-        }
-
-        let applyResult = CGCompleteDisplayConfiguration(configRef, .permanently)
-        if applyResult == .success {
-            fputs(
-                "[acuity] HiDPI mode (index \(bestModeIndex)) applied successfully "
-                + "for display \(displayID).\n",
-                stderr
-            )
-        } else {
-            fputs("[acuity] CGCompleteDisplayConfiguration failed: \(applyResult.rawValue).\n", stderr)
+            fputs("[acuity] Public HiDPI fallback applied for display \(displayID).\n", stderr)
+        } catch {
+            guard canApply() else { return }
+            fputs("[acuity] Public HiDPI fallback unavailable or failed for display \(displayID): \(error).\n", stderr)
         }
     }
 }
