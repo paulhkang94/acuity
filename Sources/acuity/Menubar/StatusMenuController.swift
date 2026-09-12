@@ -9,6 +9,7 @@ public final class StatusMenuController: NSObject {
     private var statusItem: NSStatusItem?
     private var displays: [DisplayInfo] = []
     private let enumerateDisplays: () -> [DisplayInfo]
+    private(set) var isEnablingHiDPI = false
 
     // MARK: - Lifecycle
 
@@ -45,36 +46,39 @@ public final class StatusMenuController: NSObject {
     // MARK: - Private
 
     private func populateMenu(_ menu: NSMenu) {
-        // Re-enumerate on every open: hotplugged displays must appear, and
-        // stale per-session CGDirectDisplayIDs from disconnected displays must
-        // never linger in representedObjects (a reassigned ID could target the
-        // wrong display). The menu already pays O(displays × modes) per open.
-        displays = enumerateDisplays()
         menu.removeAllItems()
+        if !isEnablingHiDPI {
+            // Re-enumerate on every open: hotplugged displays must appear, and
+            // stale per-session CGDirectDisplayIDs from disconnected displays must
+            // never linger in representedObjects (a reassigned ID could target the
+            // wrong display). The menu already pays O(displays × modes) per open.
+            displays = enumerateDisplays()
 
-        let externalDisplays = displays.filter { !$0.isBuiltIn }
+            let externalDisplays = displays.filter { !$0.isBuiltIn }
 
-        if externalDisplays.isEmpty {
-            let noDisplay = NSMenuItem(title: "No external displays", action: nil, keyEquivalent: "")
-            noDisplay.isEnabled = false
-            menu.addItem(noDisplay)
-            menu.addItem(NSMenuItem.separator())
-        } else {
-            for (index, display) in externalDisplays.enumerated() {
-                let items = DisplayMenuItem.items(for: display, index: index)
-                for item in items {
-                    menu.addItem(item)
+            if externalDisplays.isEmpty {
+                let noDisplay = NSMenuItem(title: "No external displays", action: nil, keyEquivalent: "")
+                noDisplay.isEnabled = false
+                menu.addItem(noDisplay)
+                menu.addItem(NSMenuItem.separator())
+            } else {
+                for (index, display) in externalDisplays.enumerated() {
+                    let items = DisplayMenuItem.items(for: display, index: index)
+                    for item in items {
+                        menu.addItem(item)
+                    }
                 }
             }
         }
 
         // "Enable HiDPI on All..." action
         let enableAllItem = NSMenuItem(
-            title: "Enable HiDPI on All…",
-            action: #selector(enableHiDPIAll(_:)),
+            title: isEnablingHiDPI ? "Enabling HiDPI…" : "Enable HiDPI on All…",
+            action: isEnablingHiDPI ? nil : #selector(enableHiDPIAll(_:)),
             keyEquivalent: ""
         )
         enableAllItem.target = self
+        enableAllItem.isEnabled = !isEnablingHiDPI
         menu.addItem(enableAllItem)
         menu.addItem(NSMenuItem.separator())
 
@@ -88,6 +92,47 @@ public final class StatusMenuController: NSObject {
     }
 
     @objc private func enableHiDPIAll(_: NSMenuItem) {
+        beginEnableHiDPIAll(
+            authorize: authorizeHiDPIAll,
+            apply: { inventory in
+                Self.applyHiDPILiveToAllExternals(displays: inventory)
+            },
+            completion: showEnableHiDPIResult
+        )
+    }
+
+    /// Main owns authorization, topology snapshots, menu state, and completion.
+    /// While pending, resolution actions are hidden to prevent overlapping
+    /// in-process mode changes and SelectionStore writes.
+    func beginEnableHiDPIAll(
+        authorize: () -> Bool,
+        apply: @escaping ([DisplayInfo]) -> (total: Int, applied: Int),
+        completion: @escaping (Int, Int) -> Void
+    ) {
+        precondition(Thread.isMainThread)
+        guard !isEnablingHiDPI else { return }
+        isEnablingHiDPI = true
+        rebuildMenu()
+        guard authorize() else {
+            isEnablingHiDPI = false
+            rebuildMenu()
+            return
+        }
+        // Snapshot AppKit-derived names on main; mode changes and store I/O
+        // use only this value snapshot. Modes may still need a reconnect when
+        // an override has just been installed for the first time.
+        let inventory = enumerateDisplays()
+        DispatchQueue.global(qos: .utility).async {
+            let result = apply(inventory)
+            DispatchQueue.main.async { [self] in
+                isEnablingHiDPI = false
+                rebuildMenu()
+                completion(result.total, result.applied)
+            }
+        }
+    }
+
+    private func authorizeHiDPIAll() -> Bool {
         // Escalate privileges via the native macOS auth dialog rather than
         // telling the user to open Terminal — the app should own this operation.
         let binaryPath = CommandLine.arguments[0]
@@ -99,7 +144,7 @@ public final class StatusMenuController: NSObject {
 
         guard let script = NSAppleScript(source: source) else {
             showError("Could not initialize privilege escalation.")
-            return
+            return false
         }
 
         NSApp.activate(ignoringOtherApps: true)
@@ -109,20 +154,16 @@ public final class StatusMenuController: NSObject {
         if let info = errorInfo {
             // Error code -128 = user cancelled the auth dialog; don't show an error alert.
             let code = info[NSAppleScript.errorNumber] as? Int ?? 0
-            if code == -128 { return }
+            if code == -128 { return false }
             let message = info[NSAppleScript.errorMessage] as? String ?? "Unknown error (code \(code))"
             showError(message)
-            return
+            return false
         }
 
-        // The override is written. If the scaled modes are already live (the
-        // common case once a display has been enabled before), apply HiDPI now
-        // so the change is visible immediately instead of telling the user to
-        // reboot. Fall back to the reboot message only when the modes aren't
-        // present yet (a first-ever enable on a fresh display).
-        let (total, applied) = applyHiDPILiveToAllExternals()
-        rebuildMenu()
+        return true
+    }
 
+    private func showEnableHiDPIResult(total: Int, applied: Int) {
         let alert = NSAlert()
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
@@ -139,8 +180,9 @@ public final class StatusMenuController: NSObject {
     /// scaled modes are already present, so "Enable HiDPI on All" takes effect
     /// immediately. Prefers a remembered choice, else the largest HiDPI size
     /// below native. Returns the external-display count and how many applied.
-    func applyHiDPILiveToAllExternals(
-        displays: [DisplayInfo] = DisplayEnumerator.allDisplays(),
+    /// The caller supplies the main-thread inventory; this worker has no UI state.
+    static func applyHiDPILiveToAllExternals(
+        displays: [DisplayInfo],
         store: SelectionStore = .standard(),
         applyMode: (DisplayInfo, Int, Int, Int?) throws -> (refreshRate: Double, hzFellBack: Bool) = { display, width, height, hz in
             let result = try ResolutionController.apply(
