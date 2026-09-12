@@ -12,6 +12,69 @@ final class StatusMenuControllerTests: XCTestCase {
         _ = controller
     }
 
+    func test_enableAll_preservesRememberedHzWhenItFallsBack() throws {
+        let store = makeStore()
+        let display = makeDisplay()
+        try store.record(vendorID: display.vendorID, productID: display.productID,
+                         width: 1920, height: 1080, hz: 120)
+
+        let result = StatusMenuController().applyHiDPILiveToAllExternals(
+            displays: [display], store: store
+        ) { received, width, height, hz in
+            XCTAssertEqual(received.displayID, display.displayID)
+            XCTAssertEqual(width, 1920)
+            XCTAssertEqual(height, 1080)
+            XCTAssertEqual(hz, 120)
+            return (60, true)
+        }
+
+        XCTAssertEqual(result.total, 1)
+        XCTAssertEqual(result.applied, 1, "A refresh-rate fallback still applies HiDPI successfully")
+        XCTAssertEqual(store.selection(vendorID: display.vendorID, productID: display.productID),
+                       SelectionStore.Selection(width: 1920, height: 1080, hz: 120),
+                       "A temporary rate limit must not replace the requested rate for reconnect")
+    }
+
+    func test_enableAll_recordsAppliedHzWithoutFallback() throws {
+        let store = makeStore()
+        let display = makeDisplay()
+        for (refreshRate, expectedHz) in [(119.88, Optional(120)), (0, nil)] {
+            try store.record(vendorID: display.vendorID, productID: display.productID,
+                             width: 1920, height: 1080, hz: nil)
+            let result = StatusMenuController().applyHiDPILiveToAllExternals(
+                displays: [display], store: store
+            ) { _, _, _, hz in
+                XCTAssertNil(hz)
+                return (refreshRate, false)
+            }
+            XCTAssertEqual(result.applied, 1)
+            XCTAssertEqual(store.selection(vendorID: display.vendorID, productID: display.productID)?.hz,
+                           expectedHz)
+        }
+    }
+
+    func test_enableAll_failedApplyPreservesSelectionAndDoesNotCountSuccess() throws {
+        let store = makeStore()
+        let display = makeDisplay()
+        try store.record(vendorID: display.vendorID, productID: display.productID,
+                         width: 1920, height: 1080, hz: 120)
+        let result = StatusMenuController().applyHiDPILiveToAllExternals(
+            displays: [display, makeDisplay(isBuiltIn: true)], store: store
+        ) { _, _, _, _ in
+            throw NSError(domain: "AcuityTest", code: 1)
+        }
+        XCTAssertEqual(result.total, 1)
+        XCTAssertEqual(result.applied, 0)
+        XCTAssertEqual(store.selection(vendorID: display.vendorID, productID: display.productID)?.hz, 120)
+    }
+
+    private func makeStore() -> SelectionStore {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("acuity-menu-tests-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        return SelectionStore(fileURL: directory.appendingPathComponent("selections.json"))
+    }
+
     // MARK: - DisplayMenuItem (header + resolution + separator)
 
     func test_displayMenuItem_items_containsExpectedCount() {

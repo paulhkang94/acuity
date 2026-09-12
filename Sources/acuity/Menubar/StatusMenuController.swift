@@ -129,9 +129,18 @@ public final class StatusMenuController: NSObject {
     /// scaled modes are already present, so "Enable HiDPI on All" takes effect
     /// immediately. Prefers a remembered choice, else the largest HiDPI size
     /// below native. Returns the external-display count and how many applied.
-    private func applyHiDPILiveToAllExternals() -> (total: Int, applied: Int) {
-        let externals = DisplayEnumerator.allDisplays().filter { $0.isExternal }
-        let store = SelectionStore.standard()
+    func applyHiDPILiveToAllExternals(
+        displays: [DisplayInfo] = DisplayEnumerator.allDisplays(),
+        store: SelectionStore = .standard(),
+        applyMode: (DisplayInfo, Int, Int, Int?) throws -> (refreshRate: Double, hzFellBack: Bool) = { display, width, height, hz in
+            let result = try ResolutionController.apply(
+                width: width, height: height, hz: hz, preferHiDPI: true,
+                toDisplayID: display.displayID, displayName: display.name
+            )
+            return (result.mode.refreshRate, result.hzFellBack)
+        }
+    ) -> (total: Int, applied: Int) {
+        let externals = displays.filter { $0.isExternal }
         var applied = 0
         for d in externals {
             let target: (width: Int, height: Int, hz: Int?)?
@@ -145,16 +154,17 @@ public final class StatusMenuController: NSObject {
             }
             guard let t = target else { continue }
             do {
-                let (mode, _) = try ResolutionController.apply(
-                    width: t.width, height: t.height, hz: t.hz, preferHiDPI: true,
-                    toDisplayID: d.displayID, displayName: d.name
-                )
+                let (refreshRate, hzFellBack) = try applyMode(d, t.width, t.height, t.hz)
                 applied += 1
-                // Record the Hz actually applied (record() maps 0 Hz → nil).
-                try? store.record(
-                    vendorID: d.vendorID, productID: d.productID,
-                    width: t.width, height: t.height, hz: Int(mode.refreshRate.rounded())
-                )
+                // Preserve the requested rate across a temporary fallback so
+                // reconnect can restore it. Otherwise remember the applied Hz
+                // (record() maps a virtual display's 0 Hz to nil).
+                if !hzFellBack {
+                    try? store.record(
+                        vendorID: d.vendorID, productID: d.productID,
+                        width: t.width, height: t.height, hz: Int(refreshRate.rounded())
+                    )
+                }
             } catch {
                 // Modes not present yet (needs reboot); leave it for the daemon.
             }
