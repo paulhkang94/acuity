@@ -26,3 +26,14 @@ __pycache__/
 .pytest_cache/
 node_modules/
 npm/.smithery/
+# BEGIN GENERATED PUBLIC DOCS
+# Generated from .public-docs.json; edit the manifest, then use --write-ignore.
+CLAUDE.md
+AGENTS.md
+AGENTS.override.md
+SESSION-RESUME.md
+.claude/
+.codex/
+docs/personal/
+docs/research/*
+# END GENERATED PUBLIC DOCS

@@ -21,6 +21,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Audit public documentation
+        run: python3 scripts/public_repo_guard.py --docs-only --ref HEAD
+
       # Warn-level: the three hardcoded version strings must agree with each
       # other (no tag involved). release.yml hard-fails against the tag.
       - name: Version consistency check (warn-only)
@@ -56,11 +64,6 @@ jobs:
 
       - name: Run tests
         run: swift test
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
 
       - name: Run Python tests
         run: |
