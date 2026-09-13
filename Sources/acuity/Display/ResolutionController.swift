@@ -190,8 +190,10 @@ enum ResolutionController {
         hz: Int? = nil,
         preferHiDPI: Bool = true,
         toDisplayID displayID: CGDirectDisplayID,
-        displayName: String
+        displayName: String,
+        canApply: () -> Bool = { true }
     ) throws -> (mode: CGDisplayMode, hzFellBack: Bool) {
+        guard canApply() else { throw ModeApplicationError.cancelled }
         let modes = allModes(for: displayID)
         let candidates = modes.map {
             ModeCandidate(
@@ -208,7 +210,9 @@ enum ResolutionController {
         guard let index = selection.index else {
             throw AcuityError.resolutionNotAvailable("\(width)×\(height) on \(displayName)")
         }
-        let mode = try applyExactMode(modes[index], toDisplayID: displayID, displayName: displayName)
+        let mode = try applyExactMode(
+            modes[index], toDisplayID: displayID, displayName: displayName, canApply: canApply
+        )
         return (mode, selection.hzFellBack)
     }
 

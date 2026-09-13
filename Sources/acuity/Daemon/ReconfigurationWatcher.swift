@@ -141,7 +141,7 @@ public final class ReconfigurationWatcher {
 
     // MARK: - HiDPI application
 
-    typealias RememberedApplication = (SelectionStore.Selection, CGDirectDisplayID, String) throws ->
+    typealias RememberedApplication = (SelectionStore.Selection, CGDirectDisplayID, String, () -> Bool) throws ->
         (refreshRate: Int, hzFellBack: Bool)
 
     func applyHiDPIIfOverrideExists(
@@ -205,7 +205,9 @@ public final class ReconfigurationWatcher {
     ) {
         guard canApply() else { return }
         do {
-            let (appliedHz, hzFellBack) = try (applyMode ?? Self.applyRememberedMode)(sel, displayID, displayName)
+            let (appliedHz, hzFellBack) = try (applyMode ?? Self.applyRememberedMode)(
+                sel, displayID, displayName, canApply
+            )
             if hzFellBack, let rememberedHz = sel.hz {
                 fputs(
                     "[acuity] remembered \(rememberedHz)Hz unavailable — applied "
@@ -231,11 +233,12 @@ public final class ReconfigurationWatcher {
     }
 
     private static func applyRememberedMode(
-        _ selection: SelectionStore.Selection, displayID: CGDirectDisplayID, displayName: String
+        _ selection: SelectionStore.Selection, displayID: CGDirectDisplayID, displayName: String,
+        canApply: () -> Bool
     ) throws -> (refreshRate: Int, hzFellBack: Bool) {
         let (mode, hzFellBack) = try ResolutionController.apply(
             width: selection.width, height: selection.height, hz: selection.hz, preferHiDPI: true,
-            toDisplayID: displayID, displayName: displayName
+            toDisplayID: displayID, displayName: displayName, canApply: canApply
         )
         return (Int(mode.refreshRate.rounded()), hzFellBack)
     }

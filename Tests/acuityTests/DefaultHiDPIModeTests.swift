@@ -48,6 +48,17 @@ final class DefaultHiDPIModeTests: XCTestCase {
         }
     }
 
+    func test_cancelledRememberedApplyStopsBeforeLookingUpAnUnavailableDisplay() {
+        XCTAssertThrowsError(try ResolutionController.apply(
+            width: 1920, height: 1080, hz: 120,
+            toDisplayID: .max, displayName: "Cancelled fixture", canApply: { false }
+        )) { error in
+            guard case ResolutionController.ModeApplicationError.cancelled = error else {
+                return XCTFail("Cancelled remembered work must stop before mode lookup: \(error)")
+            }
+        }
+    }
+
     func test_transactionFailureCancelsOnlyAnUncompletedContext() {
         for failed in ["begin", "configure", "complete"] {
             let recorder = TransactionRecorder(failed: failed)

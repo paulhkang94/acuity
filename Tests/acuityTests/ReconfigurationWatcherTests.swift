@@ -1,3 +1,4 @@
+import CoreGraphics
 import XCTest
 
 @testable import acuity
@@ -135,7 +136,7 @@ final class ReconfigurationWatcherTests: XCTestCase {
                 var fallbackCalls = 0
                 watcher.applyHiDPIIfOverrideExists(
                     target: target, canApply: { true }, overrideExists: { _, _ in true },
-                    applyRemembered: { selection, _, _ in
+                    applyRemembered: { selection, _, _, _ in
                         primaryCalls += 1
                         XCTAssertEqual(selection.hz, 120)
                         throw AcuityError.resolutionNotAvailable("fixture")
@@ -160,7 +161,7 @@ final class ReconfigurationWatcherTests: XCTestCase {
         watcher.applyHiDPIIfOverrideExists(
             target: DisplayWorkTarget(displayID: 1, vendorID: 2, productID: 3),
             canApply: { current }, overrideExists: { _, _ in true },
-            applyRemembered: { _, _, _ in
+            applyRemembered: { _, _, _, _ in
                 current = false
                 throw AcuityError.resolutionNotAvailable("cancelled fixture")
             }, fallback: { _ in XCTFail("Cancellation must prevent the subsequent fallback") }
@@ -175,7 +176,7 @@ final class ReconfigurationWatcherTests: XCTestCase {
         watcher.applyHiDPIIfOverrideExists(
             target: DisplayWorkTarget(displayID: 1, vendorID: 2, productID: 3),
             canApply: { true }, overrideExists: { _, _ in true },
-            applyRemembered: { _, _, _ in (60, true) },
+            applyRemembered: { _, _, _, _ in (60, true) },
             fallback: { _ in XCTFail("A successful remembered resolution needs no default fallback") }
         )
         XCTAssertEqual(store.selection(vendorID: 2, productID: 3)?.hz, 120)
@@ -187,9 +188,49 @@ final class ReconfigurationWatcherTests: XCTestCase {
             target: DisplayWorkTarget(displayID: 1, vendorID: 2, productID: 3),
             canApply: { false },
             overrideExists: { _, _ in XCTFail("Cancelled work must stop before override lookup"); return true },
-            applyRemembered: { _, _, _ in XCTFail("Cancelled work must not apply"); return (0, false) },
+            applyRemembered: { _, _, _, _ in XCTFail("Cancelled work must not apply"); return (0, false) },
             fallback: { _ in XCTFail("Cancelled work must not fall back") }
         )
+    }
+
+    func test_stopDuringRememberedModeLookupCancelsBeforeTransactionAndFallback() throws {
+        let store = try makeStore()
+        try store.record(vendorID: 2, productID: 3, width: 1920, height: 1080, hz: 120)
+        let before = store.readAll()
+        let clock = ManualDisplayClock()
+        let target = DisplayWorkTarget(displayID: 1, vendorID: 2, productID: 3)
+        let work = DisplayWorkScheduler(schedule: clock.schedule, currentTarget: { _ in target })
+        let session = work.start()
+        let watcher = ReconfigurationWatcher(selectionStore: store)
+        var requests = 0
+        var transactionCalls: [String] = []
+        let transaction = DisplayModeTransaction<Int>(
+            begin: { transactionCalls.append("begin"); return (.success, 1) },
+            configure: { _ in transactionCalls.append("configure"); return .success },
+            complete: { _, _ in transactionCalls.append("complete"); return .success },
+            cancel: { _ in transactionCalls.append("cancel") }
+        )
+        work.enqueue(target, session: session) { canApply in
+            watcher.applyHiDPIIfOverrideExists(
+                target: target, canApply: canApply, overrideExists: { _, _ in true },
+                applyRemembered: { _, _, _, mayCommit in
+                    requests += 1
+                    XCTAssertTrue(mayCommit())
+                    // A stop can arrive while public mode enumeration is in flight.
+                    work.stop()
+                    XCTAssertThrowsError(try ResolutionController.commitMode(
+                        alreadyCurrent: false, displayName: "Cancelled fixture",
+                        canApply: mayCommit, transaction: transaction
+                    ))
+                    throw ResolutionController.ModeApplicationError.cancelled
+                },
+                fallback: { _ in XCTFail("Stopped remembered work must not start fallback") }
+            )
+        }
+        clock.fire(0)
+        XCTAssertEqual(requests, 1)
+        XCTAssertTrue(transactionCalls.isEmpty, "No transaction may begin after its scheduler session stops")
+        XCTAssertEqual(store.readAll(), before)
     }
 
 }
